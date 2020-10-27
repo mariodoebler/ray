@@ -1,24 +1,26 @@
-import errno
-import gym
-import logging
-import numpy as np
 import os
+import errno
+import logging
+
 from typing import Dict, List, Optional, Tuple, Union
 
+import gym
+import numpy as np
 import ray
 import ray.experimental.tf_utils
+
 from ray.util.debug import log_once
-from ray.rllib.policy.policy import Policy, LEARNER_STATS_KEY
-from ray.rllib.policy.rnn_sequencing import pad_batch_to_sequences_of_same_size
-from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.models.modelv2 import ModelV2
-from ray.rllib.utils.annotations import override, DeveloperAPI
 from ray.rllib.utils.debug import summarize
-from ray.rllib.utils.framework import try_import_tf, get_variable
+from ray.rllib.utils.typing import (ModelGradients, TensorType,
+                                    TrainerConfigDict)
+from ray.rllib.utils.framework import get_variable, try_import_tf
 from ray.rllib.utils.schedules import ConstantSchedule, PiecewiseSchedule
+from ray.rllib.utils.annotations import DeveloperAPI, override
 from ray.rllib.utils.tf_run_builder import TFRunBuilder
-from ray.rllib.utils.typing import ModelGradients, TensorType, \
-    TrainerConfigDict
+from ray.rllib.policy.policy import LEARNER_STATS_KEY, Policy
+from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.policy.rnn_sequencing import pad_batch_to_sequences_of_same_size
+from ray.rllib.models.modelv2 import ModelV2
 
 tf1, tf, tfv = try_import_tf()
 logger = logging.getLogger(__name__)
@@ -137,7 +139,12 @@ class TFPolicy(Policy):
         """
         self.framework = "tf"
         super().__init__(observation_space, action_space, config)
+
+        assert model is None or isinstance(model, ModelV2), \
+            "Model classes for TFPolicy other than `ModelV2` not allowed! " \
+            "You passed in {}.".format(model)
         self.model = model
+
         self.exploration = self._create_exploration()
         self._sess = sess
         self._obs_input = obs_input
@@ -270,13 +277,9 @@ class TFPolicy(Policy):
         ]
         self._grads = [g for (g, v) in self._grads_and_vars]
 
-        # TODO(sven/ekl): Deprecate support for v1 models.
-        if hasattr(self, "model") and isinstance(self.model, ModelV2):
+        if self.model:
             self._variables = ray.experimental.tf_utils.TensorFlowVariables(
                 [], self._sess, self.variables())
-        else:
-            self._variables = ray.experimental.tf_utils.TensorFlowVariables(
-                self._loss, self._sess)
 
         # gather update ops for any batch norm layers
         if not self._update_ops:
@@ -329,6 +332,10 @@ class TFPolicy(Policy):
 
         # Execute session run to get action (and other fetches).
         fetched = builder.get(to_fetch)
+
+        # Update our global timestep by the batch size.
+        self.global_timestep += len(obs_batch) if isinstance(obs_batch, list) \
+            else obs_batch.shape[0]
 
         return fetched
 
