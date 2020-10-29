@@ -9,7 +9,7 @@ from typing import Callable, Any, List, Dict, Tuple, Union, Optional, \
     TYPE_CHECKING, Type, TypeVar
 
 import ray
-from ray.rllib.env.atari_wrappers import wrap_deepmind, is_atari
+from ray.rllib.env.atari_wrappers import wrap_deepmind, wrap_rectangular_deepmind, is_atari
 from ray.rllib.env.base_env import BaseEnv
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.env.external_env import ExternalEnv
@@ -348,10 +348,20 @@ class RolloutWorker(ParallelIteratorWorker):
                 clip_rewards = True
 
             def wrap(env):
-                env = wrap_deepmind(
-                    env,
-                    dim=model_config.get("dim"),
-                    framestack=model_config.get("framestack"))
+                if "dim_height" and "dim_width" in model_config["custom_model_config"]:
+                    dim_height = model_config["custom_model_config"]["dim_height"]
+                    dim_width = model_config["custom_model_config"]["dim_width"]
+                    env = wrap_rectangular_deepmind(
+                        env,
+                        dim_height = dim_height,
+                        dim_width = dim_width,
+                        framestack=model_config.get("framestack")
+                    )
+                else:
+                    env = wrap_deepmind(
+                        env,
+                        dim=model_config.get("dim"),
+                        framestack=model_config.get("framestack"))
                 if monitor_path:
                     from gym import wrappers
                     env = wrappers.Monitor(env, monitor_path, resume=True)

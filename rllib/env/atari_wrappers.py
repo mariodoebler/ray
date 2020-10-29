@@ -206,6 +206,23 @@ class MaxAndSkipEnv(gym.Wrapper):
     def reset(self, **kwargs):
         return self.env.reset(**kwargs)
 
+class WarpRectangularFrame(gym.ObservationWrapper):
+    def __init__(self, env, dim_height, dim_width):
+        """Warp frames to the specified size (dim_height x dim_width)."""
+        gym.ObservationWrapper.__init__(self, env)
+        self.width = dim_height
+        self.height = dim_width
+        self.observation_space = spaces.Box(
+            low=0,
+            high=255,
+            shape=(self.height, self.width, 1),
+            dtype=np.uint8)
+
+    def observation(self, frame):
+        frame = cv2.cvtColor(frame, cv2.COLOR_RGB2GRAY)
+        frame = cv2.resize(
+            frame, (self.width, self.height), interpolation=cv2.INTER_AREA)
+        return frame[:, :, None]
 
 class WarpFrame(gym.ObservationWrapper):
     def __init__(self, env, dim):
@@ -266,7 +283,6 @@ class ScaledFloatFrame(gym.ObservationWrapper):
         # with smaller replay buffers only.
         return np.array(observation).astype(np.float32) / 255.0
 
-
 def wrap_deepmind(env, dim=84, framestack=True):
     """Configure environment for DeepMind-style Atari.
 
@@ -284,6 +300,29 @@ def wrap_deepmind(env, dim=84, framestack=True):
     if "FIRE" in env.unwrapped.get_action_meanings():
         env = FireResetEnv(env)
     env = WarpFrame(env, dim)
+    # env = ScaledFloatFrame(env)  # TODO: use for dqn?
+    # env = ClipRewardEnv(env)  # reward clipping is handled by policy eval
+    if framestack:
+        env = FrameStack(env, 4)
+    return env
+
+def wrap_rectangular_deepmind(env, dim_height=210, dim_width=160, framestack=False):
+    """Configure environment for DeepMind-style Atari.
+
+    Note that we assume reward clipping is done outside the wrapper.
+
+    Args:
+        dim (int): Dimension to resize observations to (dim x dim).
+        framestack (bool): Whether to framestack observations.
+    """
+    env = MonitorEnv(env)
+    env = NoopResetEnv(env, noop_max=30)
+    if "NoFrameskip" in env.spec.id:
+        env = MaxAndSkipEnv(env, skip=4)
+    env = EpisodicLifeEnv(env)
+    if "FIRE" in env.unwrapped.get_action_meanings():
+        env = FireResetEnv(env)
+    env = WarpRectangularFrame(env, dim_height, dim_width)
     # env = ScaledFloatFrame(env)  # TODO: use for dqn?
     # env = ClipRewardEnv(env)  # reward clipping is handled by policy eval
     if framestack:
