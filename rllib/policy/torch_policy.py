@@ -21,6 +21,8 @@ from ray.rllib.utils.tracking_dict import UsageTrackingDict
 from ray.rllib.utils.typing import ModelGradients, ModelWeights, \
     TensorType, TrainerConfigDict
 
+from ray.rllib.utils.plot_gradients_torch import plot_gradients
+from torch import autograd
 torch, _ = try_import_torch()
 
 
@@ -367,8 +369,19 @@ class TorchPolicy(Policy):
         for i, opt in enumerate(self._optimizers):
             # Erase gradients in all vars of this optimizer.
             opt.zero_grad()
+            
+            ###### for gradient-checking (DEBUGGING) ######
+            # with autograd.detect_anomaly():
+            # 	loss_out[i].backward(retain_graph=(i < len(self._optimizers) - 1))
+            ###############################################
+            
             # Recompute gradients of loss over all variables.
             loss_out[i].backward(retain_graph=(i < len(self._optimizers) - 1))
+            
+            #### for plotting gradients (debugging)
+            # plot_gradients(self.model.named_parameters())
+            #####
+            
             grad_info.update(self.extra_grad_process(opt, loss_out[i]))
 
             if self.distributed_world_size:
