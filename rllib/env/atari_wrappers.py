@@ -210,8 +210,8 @@ class WarpRectangularFrame(gym.ObservationWrapper):
     def __init__(self, env, dim_height, dim_width):
         """Warp frames to the specified size (dim_height x dim_width)."""
         gym.ObservationWrapper.__init__(self, env)
-        self.width = dim_height
-        self.height = dim_width
+        self.height = dim_height
+        self.width = dim_width
         self.observation_space = spaces.Box(
             low=0,
             high=255,
@@ -322,7 +322,7 @@ def wrap_rectangular_deepmind(env, dim_height=210, dim_width=160, framestack=Fal
     env = EpisodicLifeEnv(env)
     if "FIRE" in env.unwrapped.get_action_meanings():
         env = FireResetEnv(env)
-    env = WarpRectangularFrame(env, dim_height, dim_width)
+    env = WarpRectangularFrame(env, dim_height=dim_height, dim_width=dim_width)
     # env = ScaledFloatFrame(env)  # TODO: use for dqn?
     # env = ClipRewardEnv(env)  # reward clipping is handled by policy eval
     if framestack:
