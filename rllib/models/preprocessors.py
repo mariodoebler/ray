@@ -135,7 +135,7 @@ class AtariRamPreprocessor(Preprocessor):
     @override(Preprocessor)
     def transform(self, observation):
         self.check_shape(observation)
-        return (observation - 128) / 128
+        return (observation.astype('float64') - 128) / 128
 
 
 class OneHotPreprocessor(Preprocessor):
