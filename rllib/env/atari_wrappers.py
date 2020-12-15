@@ -242,7 +242,6 @@ class WarpFrame(gym.ObservationWrapper):
             frame, (self.width, self.height), interpolation=cv2.INTER_AREA)
         return frame[:, :, None]
 
-
 class FrameStack(gym.Wrapper):
     def __init__(self, env, k):
         """Stack k last frames."""

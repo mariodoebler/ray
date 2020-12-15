@@ -43,7 +43,7 @@ from ray.rllib.utils.typing import AgentID, EnvConfigDict, EnvType, \
 from ray.util.debug import log_once, disable_log_once_globally, \
     enable_periodic_logging
 from ray.util.iter import ParallelIteratorWorker
-from test_atariari.wrapper.atari_wrapper import ExtractRAMLocations
+from test_atariari.wrapper.atari_wrapper import ExtractRAMLocations, FrameStackRAM
 if TYPE_CHECKING:
     from ray.rllib.evaluation.observation_function import ObservationFunction
 
@@ -367,8 +367,16 @@ class RolloutWorker(ParallelIteratorWorker):
                     env = wrappers.Monitor(env, monitor_path, resume=True)
                 return env
         elif "ram" in self.env.unwrapped.spec.id and model_config.get("custom_model_config", {}).get("extract_game_specific_ram_states", None):
+            if model_config.get("framestack", False):
+               def wrap(env):
+                    return FrameStackRAM(ExtractRAMLocations(env), k=4)
+            else: # no framestacking --> just extract RAMLocations
+                def wrap(env):
+                    return ExtractRAMLocations(env)  # we can't auto-wrap these env types
+        
+        elif "ram" in self.env.unwrapped.spec.id and model_config.get("framestack", False):
             def wrap(env):
-                return ExtractRAMLocations(env)  # we can't auto-wrap these env types
+                return FrameStackRAM(env, 4)
         else:
 
             def wrap(env):
