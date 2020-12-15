@@ -43,7 +43,7 @@ from ray.rllib.utils.typing import AgentID, EnvConfigDict, EnvType, \
 from ray.util.debug import log_once, disable_log_once_globally, \
     enable_periodic_logging
 from ray.util.iter import ParallelIteratorWorker
-
+from test_atariari.wrapper.atari_wrapper import ExtractRAMLocations
 if TYPE_CHECKING:
     from ray.rllib.evaluation.observation_function import ObservationFunction
 
@@ -366,6 +366,9 @@ class RolloutWorker(ParallelIteratorWorker):
                     from gym import wrappers
                     env = wrappers.Monitor(env, monitor_path, resume=True)
                 return env
+        elif "ram" in self.env.unwrapped.spec.id and model_config.get("custom_model_config", {}).get("extract_game_specific_ram_states", None):
+            def wrap(env):
+                return ExtractRAMLocations(env)  # we can't auto-wrap these env types
         else:
 
             def wrap(env):
