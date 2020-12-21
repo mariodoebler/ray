@@ -9,7 +9,7 @@ from typing import Callable, Any, List, Dict, Tuple, Union, Optional, \
     TYPE_CHECKING, Type, TypeVar
 
 import ray
-from ray.rllib.env.atari_wrappers import wrap_deepmind, wrap_rectangular_deepmind, is_atari
+from ray.rllib.env.atari_wrappers import wrap_deepmind, wrap_rectangular_deepmind, is_atari, wrap_ram
 from ray.rllib.env.base_env import BaseEnv
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.env.external_env import ExternalEnv
@@ -43,7 +43,7 @@ from ray.rllib.utils.typing import AgentID, EnvConfigDict, EnvType, \
 from ray.util.debug import log_once, disable_log_once_globally, \
     enable_periodic_logging
 from ray.util.iter import ParallelIteratorWorker
-from test_atariari.wrapper.atari_wrapper import ExtractRAMLocations, FrameStackRAM
+
 if TYPE_CHECKING:
     from ray.rllib.evaluation.observation_function import ObservationFunction
 
@@ -368,11 +368,11 @@ class RolloutWorker(ParallelIteratorWorker):
                 return env
         elif "ram" in self.env.unwrapped.spec.id and model_config.get("custom_model_config", {}).get("extract_game_specific_ram_states", None):
             if model_config.get("framestack", False):
-               def wrap(env):
-                    return FrameStackRAM(ExtractRAMLocations(env), k=4)
+                def wrap(env):
+                   return wrap_ram(env, framestack=True)
             else: # no framestacking --> just extract RAMLocations
                 def wrap(env):
-                    return ExtractRAMLocations(env)  # we can't auto-wrap these env types
+                    return wrap_ram(env, framestack=False)
         
         elif "ram" in self.env.unwrapped.spec.id and model_config.get("framestack", False):
             def wrap(env):

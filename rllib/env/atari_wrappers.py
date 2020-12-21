@@ -5,6 +5,7 @@ from gym import spaces
 import cv2
 cv2.ocl.setUseOpenCL(False)
 
+from atariari.benchmark.ram_annotations import atari_dict
 
 def is_atari(env):
     if (hasattr(env.observation_space, "shape")
@@ -327,3 +328,76 @@ def wrap_rectangular_deepmind(env, dim_height=210, dim_width=160, framestack=Fal
     if framestack:
         env = FrameStack(env, 4)
     return env
+    
+def wrap_ram(env, framestack=True):
+    # ORDER is important
+    # FIRST extract rams, then (maybe) stack the observations
+    env = ExtractRAMLocations(env)
+    if framestack:
+        env = FrameStackRAM(env, k=4)
+    return env
+	
+class ExtractRAMLocations(gym.ObservationWrapper):
+    def __init__(self, env):
+        super().__init__(env)
+        assert len(env.observation_space.shape) == 1
+
+        # necessary for lookup in the dictionary
+        self.game_name = self.env.unwrapped.spec.id.split(
+            "-")[0].split("No")[0].split("Deterministic")[0].lower()
+
+        dict_game = atari_dict[self.game_name]
+        if "pong" in self.game_name:
+            # remove these keys as they're not relevant for this specific game!
+            dict_game.pop("player_x", None)
+            dict_game.pop("enemy_x", None)
+            dict_game.pop("enemy_score", None)
+            dict_game.pop("player_score", None)
+        self.ram_variables = list(dict_game.values())
+
+        new_obs_space = gym.spaces.Box(
+            low=-1,
+            high=1,
+            shape=(len(self.ram_variables), ),
+            dtype=np.float64
+        )
+        self.observation_space = new_obs_space
+
+        self.observation_space_pong = 4
+
+    def observation(self, obs):
+        obs_ram = np.asarray([obs[i] for i in range(len(obs)) if i in self.ram_variables], dtype='float64')
+        if "pong" in self.game_name:
+            assert len(obs_ram) == self.observation_space_pong
+        return obs_ram / 256
+
+class FrameStackRAM(gym.Wrapper):
+    def __init__(self, env, k=4):
+        gym.Wrapper.__init__(self, env) # important otherwise action_space == None
+
+        self.k = k
+        self.frames = deque([], maxlen=k)
+        shp = env.observation_space.shape
+        assert len(shp) == 1, "Observation-Space of an environment based on the RAM-State should just be 1 before applying framestacking!"
+        self.observation_space = spaces.Box(
+            low=env.observation_space.low[0],  # scalar value needed! low respectively high is an array of dim shape...
+            high=env.observation_space.high[0],
+            shape=(shp[0], k),
+            dtype=env.observation_space.dtype
+        )
+
+    def reset(self):
+        ob = self.env.reset()
+        for _ in range(self.k):
+            self.frames.append(np.expand_dims(ob, axis=1))
+        return self._get_ob()
+
+    def step(self, action):
+        ob, reward, done, info = self.env.step(action)
+        self.frames.append(np.expand_dims(ob, axis=1))
+        return self._get_ob(), reward, done, info
+
+    def _get_ob(self):
+        assert len(self.frames) == self.k
+        return np.concatenate(self.frames, axis=1)
+
