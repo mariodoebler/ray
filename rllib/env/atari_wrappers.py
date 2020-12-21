@@ -329,12 +329,16 @@ def wrap_rectangular_deepmind(env, dim_height=210, dim_width=160, framestack=Fal
         env = FrameStack(env, 4)
     return env
     
-def wrap_ram(env, framestack=True):
+def wrap_ram(env, framestack=True, extract_ram=True):
     # ORDER is important
     # FIRST extract rams, then (maybe) stack the observations
-    env = ExtractRAMLocations(env)
+    if extract_ram:
+        env = ExtractRAMLocations(env)
+
     if framestack:
-        env = FrameStackRAM(env, k=4)
+        env = FrameStackRAMFrameSkip(env, k=4, skip=4)
+    else: # no frameSTACKING but do SKIP
+        env = FrameSkipRAM(env, skip=4)
     return env
 	
 class ExtractRAMLocations(gym.ObservationWrapper):
@@ -371,11 +375,54 @@ class ExtractRAMLocations(gym.ObservationWrapper):
             assert len(obs_ram) == self.observation_space_pong
         return obs_ram / 256
 
-class FrameStackRAM(gym.Wrapper):
-    def __init__(self, env, k=4):
+class FrameSkipRAM(gym.Wrapper):
+    def __init__(self, env, skip=4):
+        gym.Wrapper.__init__(self, env) # important otherwise action_space == None
+
+        self._skip = skip
+        # self.frames = deque([], maxlen=k)
+        shp = env.observation_space.shape
+        assert len(shp) == 1, "Observation-Space of an environment based on the RAM-State should just be 1 before applying framestacking!"
+        # self.observation_space = spaces.Box(
+        #     low=env.observation_space.low[0],  # scalar value needed! low respectively high is an array of dim shape...
+        #     high=env.observation_space.high[0],
+        #     shape=(shp[0], k),
+        #     dtype=env.observation_space.dtype
+        # )
+        self.last_obs = None
+
+    def reset(self, **kwargs):
+        # ob = self.env.reset()
+        # for _ in range(self.k):
+        #     self.frames.append(np.expand_dims(ob, axis=1))
+        # return self._get_ob()
+        return self.env.reset(**kwargs)
+
+    def step(self, action):
+        total_reward = 0.0
+        done = None
+        for i in range(self._skip):
+            ob, reward, done, info = self.env.step(action)
+            if i == self._skip - 1: # LAST frame of the skipping iteration
+                self.last_obs = ob
+            total_reward += reward
+            if done:
+                break
+        # self.frames.append(last_obs)
+        # self.frames.append(np.expand_dims(ob, axis=1))
+        return self.last_obs, total_reward, done, info
+
+    # def _get_ob(self):
+    #     assert len(self.frames) == self.k
+    #     return np.concatenate(self.frames, axis=1)
+
+
+class FrameStackRAMFrameSkip(gym.Wrapper):
+    def __init__(self, env, k=4, skip=4):
         gym.Wrapper.__init__(self, env) # important otherwise action_space == None
 
         self.k = k
+        self._skip = skip
         self.frames = deque([], maxlen=k)
         shp = env.observation_space.shape
         assert len(shp) == 1, "Observation-Space of an environment based on the RAM-State should just be 1 before applying framestacking!"
@@ -393,7 +440,16 @@ class FrameStackRAM(gym.Wrapper):
         return self._get_ob()
 
     def step(self, action):
-        ob, reward, done, info = self.env.step(action)
+        total_reward = 0.0
+        done = None
+        for i in range(self._skip):
+            ob, reward, done, info = self.env.step(action)
+            if i == self._skip -1: # LAST frame of the skipping iteration
+                last_obs = ob
+            total_reward += reward
+            if done:
+                break
+        # self.frames.append(last_obs)
         self.frames.append(np.expand_dims(ob, axis=1))
         return self._get_ob(), reward, done, info
 

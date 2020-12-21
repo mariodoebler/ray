@@ -367,16 +367,16 @@ class RolloutWorker(ParallelIteratorWorker):
                     env = wrappers.Monitor(env, monitor_path, resume=True)
                 return env
         elif "ram" in self.env.unwrapped.spec.id and model_config.get("custom_model_config", {}).get("extract_game_specific_ram_states", None):
-            if model_config.get("framestack", False):
+            if model_config.get("framestack", False): # if nothing is set --> assume NO framestacking
                 def wrap(env):
-                   return wrap_ram(env, framestack=True)
+                   return wrap_ram(env, framestack=True, extract_ram=True)
             else: # no framestacking --> just extract RAMLocations
                 def wrap(env):
-                    return wrap_ram(env, framestack=False)
+                    return wrap_ram(env, framestack=False, extract_ram=True)
         
         elif "ram" in self.env.unwrapped.spec.id and model_config.get("framestack", False):
             def wrap(env):
-                return FrameStackRAM(env, 4)
+                return wrap_ram(env, framestack=True, extract_ram=False)
         else:
 
             def wrap(env):
