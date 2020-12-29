@@ -4,7 +4,7 @@ import gym
 from gym import spaces
 import cv2
 cv2.ocl.setUseOpenCL(False)
-
+from PIL import Image
 from atariari.benchmark.ram_annotations import atari_dict
 
 def is_atari(env):
@@ -89,7 +89,11 @@ class NoopResetEnv(gym.Wrapper):
         assert env.unwrapped.get_action_meanings()[0] == "NOOP"
 
     def reset(self, **kwargs):
-        """ Do no-op action for a number of steps in [1, noop_max]."""
+        """ Do no-op action for a number of             obs_ram = np.array([obs[self.ram_variables_dict["ball_x"]],
+                                obs[self.ram_variables_dict["enememy_y"]],
+                                obs[self.ram_variables_dict["player_y"]],
+                                obs[self.ram_variables_dict["ball_y"]]], dtype='float64')
+steps in [1, noop_max]."""
         self.env.reset(**kwargs)
         if self.override_num_noops is not None:
             noops = self.override_num_noops
@@ -329,11 +333,23 @@ def wrap_rectangular_deepmind(env, dim_height=210, dim_width=160, framestack=Fal
         env = FrameStack(env, 4)
     return env
     
-def wrap_ram(env, framestack=True, extract_ram=True):
+def wrap_ram(env, framestack=True, extract_ram=True, debug_trajectory=False):
     # ORDER is important
     # FIRST extract rams, then (maybe) stack the observations
+    # env = MonitorEnv(env)
+    env = NoopResetEnv(env, noop_max=30)
+    # if "NoFrameskip" in env.spec.id:
+        # env = MaxAndSkipEnv(env, skip=4)
+    env = EpisodicLifeEnv(env)
+    if "FIRE" in env.unwrapped.get_action_meanings():
+        env = FireResetEnv(env)
+    # env = WarpFrame(env, dim)
+    # env = ScaledFloatFrame(env)  # TODO: use for dqn?
+    # env = ClipRewardEnv(env)  # reward clipping is handled by policy eval
+
+
     if extract_ram:
-        env = ExtractRAMLocations(env)
+        env = ExtractRAMLocations(env, debug_trajectory)
 
     if framestack:
         env = FrameStackRAMFrameSkip(env, k=4, skip=4)
@@ -342,13 +358,16 @@ def wrap_ram(env, framestack=True, extract_ram=True):
     return env
 	
 class ExtractRAMLocations(gym.ObservationWrapper):
-    def __init__(self, env):
+    def __init__(self, env, debug_trajectory=False):
         super().__init__(env)
         assert len(env.observation_space.shape) == 1
-
+        self.env = env
+        self.debug_trajectory = debug_trajectory
         # necessary for lookup in the dictionary
         self.game_name = self.env.unwrapped.spec.id.split(
             "-")[0].split("No")[0].split("Deterministic")[0].lower()
+
+        assert (self.debug_trajectory and  "pong" in self.game_name) or (not self.debug_trajectory or "pong" not in self.game_name) == 1
 
         dict_game = atari_dict[self.game_name]
         if "pong" in self.game_name:
@@ -357,23 +376,132 @@ class ExtractRAMLocations(gym.ObservationWrapper):
             dict_game.pop("enemy_x", None)
             dict_game.pop("enemy_score", None)
             dict_game.pop("player_score", None)
-        self.ram_variables = list(dict_game.values())
+        self.ram_variables_dict = dict_game
 
-        new_obs_space = gym.spaces.Box(
-            low=-1,
-            high=1,
-            shape=(len(self.ram_variables), ),
-            dtype=np.float64
-        )
+        if self.debug_trajectory:
+            new_obs_space = gym.spaces.Box(
+                low=-1,
+                high=1,
+                shape=(2,),
+                dtype=np.float64
+            )
+            self.prev_ball_pos = -100 * np.ones(2)
+            self.upper_bound = 209-15
+            self.lower_bound = 35
+
+        else:
+            new_obs_space = gym.spaces.Box(
+                low=-1,
+                high=1,
+                shape=(len(self.ram_variables_dict), ),
+                dtype=np.float64
+            )
         self.observation_space = new_obs_space
 
         self.observation_space_pong = 4
+        self.counter = 0
+        self.dump_path = "/home/cathrin/MA/datadump/ram/trajectory"
+        self.offsets = {
+            "ball_x": 48,
+            "ball_y": 12,
+            "enemy_x": 45,
+            "enemy_y": 7,
+            "player_x": 48,
+            "player_y": 5
+        }
+
+
+    def getTrajectoryEndPoint(self, obs_ram):
+        ball_x = obs_ram[0]
+        ball_y = obs_ram[3]
+        if abs(185 - ball_x) < 5.0 and abs(135 - ball_y) < 3:
+            pass
+        else:
+            print(f"ball_x {ball_x}, ball_y {ball_y}")
+
+        if np.any(self.prev_ball_pos) < 0: #  or (np.isclose(ball_x, 0) and np.isclose(ball_y, 0)):
+            endpoint = ball_y
+
+            ## just for debugging / printing / plotting
+            ball_v_x = np.nan
+            ball_v_y = np.nan
+        else:
+            ball_v_x = ball_x - self.prev_ball_pos[0]
+            ball_v_y = ball_y - self.prev_ball_pos[1]
+
+            if ball_v_x < -0.5:  # --> ball goes towards enemy and not towards player...
+                # ball_v_x *= -1
+                # ball_v_y *= -1
+                #
+                v_quotient_y_x = ball_v_y / ball_v_x
+                # endpoint_enemy_y = v_quotient_y_x * (20 - ball_x) + ball_y
+                # endpoint = v_quotient_y_x * (140 - 20) + endpoint_enemy_y # ball_y
+
+                endpoint = v_quotient_y_x * (140 - ball_x) + ball_y
+            elif ball_v_x == 0.0 and ball_v_y == 0.0:
+                endpoint = ball_y
+            elif (ball_v_x > 30) and (ball_v_y > 30):
+                endpoint = ball_y
+            else:
+                if ball_v_x == 0.0:
+                    ball_v_x = np.finfo(float).eps
+                if ball_v_y == 0.0:
+                    ball_v_y = np.finfo(float).eps
+
+                v_quotient_y_x = ball_v_y / ball_v_x
+
+                endpoint = v_quotient_y_x * (140 - ball_x) + ball_y
+
+        endpoint_unprocessed = endpoint
+        clipped_val = np.clip(endpoint, 0, 209) # y-value --> range[0, 209]
+        if endpoint > self.upper_bound:
+            endpoint = self.upper_bound - (endpoint - self.upper_bound)
+        elif endpoint < self.lower_bound:
+            endpoint = self.lower_bound - (endpoint - self.lower_bound)  #  --> positive value
+        if clipped_val != endpoint:
+            print(f"unclipped value {endpoint_unprocessed} now: {endpoint}, ball_x {ball_x}, ball_y {ball_y}, prev positions {self.prev_ball_pos[0]}, {self.prev_ball_pos[1]} v: {ball_v_x}, {ball_v_y}")
+
+        self.prev_ball_pos[0] = ball_x
+        self.prev_ball_pos[1] = ball_y
+
+        return endpoint, ball_v_x, ball_v_y
 
     def observation(self, obs):
-        obs_ram = np.asarray([obs[i] for i in range(len(obs)) if i in self.ram_variables], dtype='float64')
-        if "pong" in self.game_name:
+        obs_ram = np.array([obs[self.ram_variables_dict["ball_x"] - self.offsets["ball_x"]],
+                            obs[self.ram_variables_dict["enemy_y"] - self.offsets["enemy_y"]],
+                            obs[self.ram_variables_dict["player_y"] - self.offsets["player_y"]],
+                            obs[self.ram_variables_dict["ball_y"] - self.offsets["ball_y"]]], dtype='float64')
+        # obs_ram = np.asarray([obs[i] for i in range(len(obs)) if i in self.ram_variables_dict.values()], dtype='float64')
+        if self.debug_trajectory:
+            player_x = obs[self.ram_variables_dict["player_x"]]
+            enemy_x = obs[self.ram_variables_dict["enemy_x"]]
+            trajectory_endpoint, ball_v_x, ball_v_y = self.getTrajectoryEndPoint(obs_ram)
+            obs_ram_2 = np.array([obs_ram[2], trajectory_endpoint])  # player_y, endpoint_y
+
+            if self.counter > 10 and self.counter < 310:
+                im = self.env.render('rgb_array')
+                # center: tuple(COL, ROW) --> here: (x, y)
+                # ball
+                cv2.circle(im, (int(obs_ram[0]), int(obs_ram[-1])), 3, color=(0, 255, 0), thickness=-1)
+                # enemy
+                cv2.circle(im, (enemy_x, int(obs_ram[1])), 3, color=(0, 0, 0), thickness=-1)
+                # player
+                if player_x >= 160:
+                    cv2.circle(im, (159, int(obs_ram[2])), 3, color=(255, 0, 0), thickness=-1)
+                else:
+                    cv2.circle(im, (player_x, int(obs_ram[2])), 3, color=(0, 0, 0), thickness=-1)
+                print(f"{player_x}   {enemy_x}")
+                # im = cv2.cvtColor(im, cv2.COLOR_RGB2GRAY)
+                im = Image.fromarray(im)
+                im.save(f"{self.dump_path}_{self.counter}_{obs_ram_2[0]}_{obs_ram_2[1]}_v_{ball_v_x}_{ball_v_y}_posball_{obs_ram[0]}_{obs_ram[-1]}.png")
+            self.counter += 1
+            obs_ram = obs_ram_2
+        # else:
+        #     raise SystemError
+
+        if "pong" in self.game_name and not self.debug_trajectory:
             assert len(obs_ram) == self.observation_space_pong
-        return obs_ram / 256
+        return obs_ram / 255.0
 
 class FrameSkipRAM(gym.Wrapper):
     def __init__(self, env, skip=4):
@@ -456,4 +584,6 @@ class FrameStackRAMFrameSkip(gym.Wrapper):
     def _get_ob(self):
         assert len(self.frames) == self.k
         return np.concatenate(self.frames, axis=1)
+
+
 

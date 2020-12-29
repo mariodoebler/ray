@@ -371,8 +371,9 @@ class RolloutWorker(ParallelIteratorWorker):
                 def wrap(env):
                    return wrap_ram(env, framestack=True, extract_ram=True)
             else: # no framestacking --> just extract RAMLocations
+                debug_trajectory = model_config.get("custom_model_config").get("debug_trajectory", False) # if not set --> False
                 def wrap(env):
-                    return wrap_ram(env, framestack=False, extract_ram=True)
+                    return wrap_ram(env, framestack=False, extract_ram=True, debug_trajectory=debug_trajectory)
         
         elif "ram" in self.env.unwrapped.spec.id and model_config.get("framestack", False):
             def wrap(env):
