@@ -396,7 +396,7 @@ class ExtractRAMLocations(gym.ObservationWrapper):
             new_obs_space = gym.spaces.Box(
                 low=-1,
                 high=1,
-                shape=(len(self.ram_variables_dict), ),
+                shape=(4,),
                 dtype=np.float64
             )
         self.observation_space = new_obs_space
@@ -470,14 +470,14 @@ class ExtractRAMLocations(gym.ObservationWrapper):
         return clipped_val, ball_v_x, ball_v_y
 
     def observation(self, obs):
-        obs_ram = np.array([obs[self.ram_variables_dict["ball_x"]] - self.offsets["ball_x"],
-                            obs[self.ram_variables_dict["enemy_y"]] - self.offsets["enemy_y"],
-                            obs[self.ram_variables_dict["player_y"]] - self.offsets["player_y"],
-                            obs[self.ram_variables_dict["ball_y"]] - self.offsets["ball_y"]], dtype='float64')
+        obs_ram = np.array([np.clip(obs[self.ram_variables_dict["ball_x"]] - self.offsets["ball_x"], 0, 159),
+                            np.clip(obs[self.ram_variables_dict["enemy_y"]] - self.offsets["enemy_y"], 0, 209),
+                            np.clip(obs[self.ram_variables_dict["player_y"]] - self.offsets["player_y"], 0, 209),
+                            np.clip(obs[self.ram_variables_dict["ball_y"]] - self.offsets["ball_y"], 0, 209)], dtype='float64')
         # print(f"{obs_ram[0]} {obs_ram[1]} {obs_ram[2]} {obs_ram[3]}")
         if self.debug_trajectory:
-            player_x = obs[self.ram_variables_dict["player_x"]] - self.offsets["player_x"]
-            enemy_x = obs[self.ram_variables_dict["enemy_x"]] - self.offsets["enemy_x"]
+            player_x = np.clip(obs[self.ram_variables_dict["player_x"]] - self.offsets["player_x"], 0, 159)
+            enemy_x = np.clip(obs[self.ram_variables_dict["enemy_x"]] - self.offsets["enemy_x"], 0, 159)
             trajectory_endpoint, ball_v_x, ball_v_y = self.getTrajectoryEndPoint(obs_ram)
             obs_ram_2 = np.array([obs_ram[2], trajectory_endpoint])  # player_y, endpoint_y
 
