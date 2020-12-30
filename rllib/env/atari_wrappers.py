@@ -6,6 +6,9 @@ import cv2
 cv2.ocl.setUseOpenCL(False)
 from PIL import Image
 from atariari.benchmark.ram_annotations import atari_dict
+from pathlib import Path
+import os
+import torch
 
 def is_atari(env):
     if (hasattr(env.observation_space, "shape")
@@ -372,8 +375,8 @@ class ExtractRAMLocations(gym.ObservationWrapper):
         dict_game = atari_dict[self.game_name]
         if "pong" in self.game_name:
             # remove these keys as they're not relevant for this specific game!
-            dict_game.pop("player_x", None)
-            dict_game.pop("enemy_x", None)
+            # dict_game.pop("player_x", None)
+            # dict_game.pop("enemy_x", None)
             dict_game.pop("enemy_score", None)
             dict_game.pop("player_score", None)
         self.ram_variables_dict = dict_game
@@ -400,7 +403,7 @@ class ExtractRAMLocations(gym.ObservationWrapper):
 
         self.observation_space_pong = 4
         self.counter = 0
-        self.dump_path = "/home/cathrin/MA/datadump/ram/trajectory"
+        self.dump_path = os.path.join(Path.home(), "MA/datadump/ram/trajectory")
         self.offsets = {
             "ball_x": 48,
             "ball_y": 12,
@@ -414,10 +417,10 @@ class ExtractRAMLocations(gym.ObservationWrapper):
     def getTrajectoryEndPoint(self, obs_ram):
         ball_x = obs_ram[0]
         ball_y = obs_ram[3]
-        if abs(185 - ball_x) < 5.0 and abs(135 - ball_y) < 3:
-            pass
-        else:
-            print(f"ball_x {ball_x}, ball_y {ball_y}")
+        # if abs(185 - ball_x) < 5.0 and abs(135 - ball_y) < 3:
+        #     pass
+        # else:
+            # print(f"ball_x {ball_x}, ball_y {ball_y}")
 
         if np.any(self.prev_ball_pos) < 0: #  or (np.isclose(ball_x, 0) and np.isclose(ball_y, 0)):
             endpoint = ball_y
@@ -440,7 +443,7 @@ class ExtractRAMLocations(gym.ObservationWrapper):
                 endpoint = v_quotient_y_x * (140 - ball_x) + ball_y
             elif ball_v_x == 0.0 and ball_v_y == 0.0:
                 endpoint = ball_y
-            elif (ball_v_x > 30) and (ball_v_y > 30):
+            elif (abs(ball_v_x) > 10) or abs(ball_v_y) > 10:
                 endpoint = ball_y
             else:
                 if ball_v_x == 0.0:
@@ -453,44 +456,42 @@ class ExtractRAMLocations(gym.ObservationWrapper):
                 endpoint = v_quotient_y_x * (140 - ball_x) + ball_y
 
         endpoint_unprocessed = endpoint
-        clipped_val = np.clip(endpoint, 0, 209) # y-value --> range[0, 209]
         if endpoint > self.upper_bound:
             endpoint = self.upper_bound - (endpoint - self.upper_bound)
         elif endpoint < self.lower_bound:
             endpoint = self.lower_bound - (endpoint - self.lower_bound)  #  --> positive value
+        clipped_val = np.clip(endpoint, 0, 209) # y-value --> range[0, 209]
         if clipped_val != endpoint:
             print(f"unclipped value {endpoint_unprocessed} now: {endpoint}, ball_x {ball_x}, ball_y {ball_y}, prev positions {self.prev_ball_pos[0]}, {self.prev_ball_pos[1]} v: {ball_v_x}, {ball_v_y}")
 
         self.prev_ball_pos[0] = ball_x
         self.prev_ball_pos[1] = ball_y
 
-        return endpoint, ball_v_x, ball_v_y
+        return clipped_val, ball_v_x, ball_v_y
 
     def observation(self, obs):
-        obs_ram = np.array([obs[self.ram_variables_dict["ball_x"] - self.offsets["ball_x"]],
-                            obs[self.ram_variables_dict["enemy_y"] - self.offsets["enemy_y"]],
-                            obs[self.ram_variables_dict["player_y"] - self.offsets["player_y"]],
-                            obs[self.ram_variables_dict["ball_y"] - self.offsets["ball_y"]]], dtype='float64')
-        # obs_ram = np.asarray([obs[i] for i in range(len(obs)) if i in self.ram_variables_dict.values()], dtype='float64')
+        obs_ram = np.array([obs[self.ram_variables_dict["ball_x"]] - self.offsets["ball_x"],
+                            obs[self.ram_variables_dict["enemy_y"]] - self.offsets["enemy_y"],
+                            obs[self.ram_variables_dict["player_y"]] - self.offsets["player_y"],
+                            obs[self.ram_variables_dict["ball_y"]] - self.offsets["ball_y"]], dtype='float64')
+        # print(f"{obs_ram[0]} {obs_ram[1]} {obs_ram[2]} {obs_ram[3]}")
         if self.debug_trajectory:
-            player_x = obs[self.ram_variables_dict["player_x"]]
-            enemy_x = obs[self.ram_variables_dict["enemy_x"]]
+            player_x = obs[self.ram_variables_dict["player_x"]] - self.offsets["player_x"]
+            enemy_x = obs[self.ram_variables_dict["enemy_x"]] - self.offsets["enemy_x"]
             trajectory_endpoint, ball_v_x, ball_v_y = self.getTrajectoryEndPoint(obs_ram)
             obs_ram_2 = np.array([obs_ram[2], trajectory_endpoint])  # player_y, endpoint_y
 
-            if self.counter > 10 and self.counter < 310:
+            if self.counter > 10 and self.counter < 310: #  and not torch.cuda.is_available:
                 im = self.env.render('rgb_array')
                 # center: tuple(COL, ROW) --> here: (x, y)
                 # ball
-                cv2.circle(im, (int(obs_ram[0]), int(obs_ram[-1])), 3, color=(0, 255, 0), thickness=-1)
+                cv2.circle(im, (int(obs_ram[0]), int(obs_ram[-1])), 6, color=(255, 255, 0), thickness=1)
                 # enemy
-                cv2.circle(im, (enemy_x, int(obs_ram[1])), 3, color=(0, 0, 0), thickness=-1)
+                cv2.circle(im, (int(enemy_x), int(obs_ram[1])), 2, color=(0, 0, 0), thickness=-1)
                 # player
-                if player_x >= 160:
-                    cv2.circle(im, (159, int(obs_ram[2])), 3, color=(255, 0, 0), thickness=-1)
-                else:
-                    cv2.circle(im, (player_x, int(obs_ram[2])), 3, color=(0, 0, 0), thickness=-1)
-                print(f"{player_x}   {enemy_x}")
+                cv2.circle(im, (int(player_x), int(obs_ram[2])), 2, color=(255, 0, 0), thickness=-1)
+                # endpoint
+                cv2.circle(im, (int(player_x), int(trajectory_endpoint)), 5, color=(255, 0, 0), thickness=1)
                 # im = cv2.cvtColor(im, cv2.COLOR_RGB2GRAY)
                 im = Image.fromarray(im)
                 im.save(f"{self.dump_path}_{self.counter}_{obs_ram_2[0]}_{obs_ram_2[1]}_v_{ball_v_x}_{ball_v_y}_posball_{obs_ram[0]}_{obs_ram[-1]}.png")
