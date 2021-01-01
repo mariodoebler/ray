@@ -366,7 +366,7 @@ class RolloutWorker(ParallelIteratorWorker):
                     from gym import wrappers
                     env = wrappers.Monitor(env, monitor_path, resume=True)
                 return env
-        elif "ram" in self.env.unwrapped.spec.id and model_config.get("custom_model_config", {}).get("extract_game_specific_ram_states", None):
+        elif self.env.unwrapped.spec is not None and "ram" in self.env.unwrapped.spec.id and model_config.get("custom_model_config", {}).get("extract_game_specific_ram_states", None):
             if model_config.get("framestack", False): # if nothing is set --> assume NO framestacking
                 def wrap(env):
                    return wrap_ram(env, framestack=True, extract_ram=True)
@@ -375,7 +375,7 @@ class RolloutWorker(ParallelIteratorWorker):
                 def wrap(env):
                     return wrap_ram(env, framestack=False, extract_ram=True, debug_trajectory=debug_trajectory)
         
-        elif "ram" in self.env.unwrapped.spec.id and model_config.get("framestack", False):
+        elif self.env.unwrapped.spec is not None and "ram" in self.env.unwrapped.spec.id and model_config.get("framestack", False):
             def wrap(env):
                 return wrap_ram(env, framestack=True, extract_ram=False)
         else:
