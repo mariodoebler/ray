@@ -461,8 +461,8 @@ class ExtractRAMLocations(gym.ObservationWrapper):
         elif endpoint < self.lower_bound:
             endpoint = self.lower_bound - (endpoint - self.lower_bound)  #  --> positive value
         clipped_val = np.clip(endpoint, 0, 209) # y-value --> range[0, 209]
-        if clipped_val != endpoint:
-            print(f"unclipped value {endpoint_unprocessed} now: {endpoint}, ball_x {ball_x}, ball_y {ball_y}, prev positions {self.prev_ball_pos[0]}, {self.prev_ball_pos[1]} v: {ball_v_x}, {ball_v_y}")
+        # if clipped_val != endpoint:
+        #     print(f"unclipped value {endpoint_unprocessed} now: {endpoint}, ball_x {ball_x}, ball_y {ball_y}, prev positions {self.prev_ball_pos[0]}, {self.prev_ball_pos[1]} v: {ball_v_x}, {ball_v_y}")
 
         self.prev_ball_pos[0] = ball_x
         self.prev_ball_pos[1] = ball_y
@@ -580,7 +580,7 @@ class FrameStackRAMFrameSkip(gym.Wrapper):
                 break
         # self.frames.append(last_obs)
         self.frames.append(np.expand_dims(ob, axis=1))
-        return self._get_ob(), reward, done, info
+        return self._get_ob(), total_reward, done, info
 
     def _get_ob(self):
         assert len(self.frames) == self.k
