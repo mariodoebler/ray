@@ -361,7 +361,8 @@ class RolloutWorker(ParallelIteratorWorker):
                     env = wrap_deepmind(
                         env,
                         dim=model_config.get("dim"),
-                        framestack=model_config.get("framestack"))
+                        framestack=model_config.get("framestack"),
+                        cut_scores=model_config.pop("pong_cut_scores_away", False))
                 if monitor_path:
                     from gym import wrappers
                     env = wrappers.Monitor(env, monitor_path, resume=True)
