@@ -81,7 +81,7 @@ class RolloutWorker(ParallelIteratorWorker):
     VectorEnv, MultiAgentEnv, etc.)
 
     Examples:
-        >>> # Create a rollout worker and using it to collect experiences.
+        >>> # Create a rollout worker and using it to collect experiencese
         >>> worker = RolloutWorker(
         ...   env_creator=lambda _: gym.make("CartPole-v0"),
         ...   policy=PGTFPolicy)
@@ -367,11 +367,11 @@ class RolloutWorker(ParallelIteratorWorker):
                     env = wrappers.Monitor(env, monitor_path, resume=True)
                 return env
         elif self.env.unwrapped.spec is not None and "ram" in self.env.unwrapped.spec.id and model_config.get("custom_model_config", {}).get("extract_game_specific_ram_states", None):
+            debug_trajectory = model_config.get("custom_model_config").get("debug_trajectory", False) # if not set --> False
             if model_config.get("framestack", False): # if nothing is set --> assume NO framestacking
                 def wrap(env):
-                   return wrap_ram(env, framestack=True, extract_ram=True)
+                   return wrap_ram(env, framestack=True, extract_ram=True, debug_trajectory=debug_trajectory)
             else: # no framestacking --> just extract RAMLocations
-                debug_trajectory = model_config.get("custom_model_config").get("debug_trajectory", False) # if not set --> False
                 def wrap(env):
                     return wrap_ram(env, framestack=False, extract_ram=True, debug_trajectory=debug_trajectory)
         
