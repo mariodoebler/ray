@@ -6,7 +6,7 @@ from ray.rllib.models.torch.misc import normc_initializer, same_padding, \
 from ray.rllib.models.utils import get_filter_config
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
-
+import torch
 _, nn = try_import_torch()
 
 
@@ -148,6 +148,8 @@ class VisionNetwork(TorchModelV2, nn.Module):
     @override(TorchModelV2)
     def forward(self, input_dict, state, seq_lens):
         self._features = input_dict["obs"].float().permute(0, 3, 1, 2)
+        if torch.max(self._features) > 2:
+            self._features = self._features/255.
         conv_out = self._convs(self._features)
         # Store features to save forward pass when getting value_function out.
         if not self._value_branch_separate:

@@ -248,7 +248,7 @@ class WarpFrame(gym.ObservationWrapper):
     def observation(self, frame):
         frame = cv2.cvtColor(frame, cv2.COLOR_RGB2GRAY)
         if self.cut_scores:
-            frame = frame[36:, :] # cut away the upper 36px of Pong --> cut scores (cpu and player) away
+            frame = frame[30:, :] # cut away the upper 36px of Pong --> cut scores (cpu and player) away
         frame = cv2.resize(
             frame, (self.width, self.height), interpolation=cv2.INTER_AREA)
         return frame[:, :, None]
