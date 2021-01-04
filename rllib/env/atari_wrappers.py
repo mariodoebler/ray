@@ -377,19 +377,20 @@ class ExtractRAMLocations(gym.ObservationWrapper):
             # remove these keys as they're not relevant for this specific game!
             # dict_game.pop("player_x", None)
             # dict_game.pop("enemy_x", None)
-            dict_game.pop("enemy_score", None)
-            dict_game.pop("player_score", None)
+            pass
+            # dict_game.pop("enemy_score", None)
+            # dict_game.pop("player_score", None)
         self.ram_variables_dict = dict_game
 
         new_obs_space = gym.spaces.Box(
             low=0,
             high=1,
-            shape=(4,),
+            shape=(6,),
             dtype=np.float64
         )
         self.observation_space = new_obs_space
 
-        self.observation_space_pong = 4
+        self.observation_space_pong = 6
         self.counter = 0
         self.dump_path = os.path.join(Path.home(), "MA/datadump/ram/pong_traj/")
         self.offsets = {
@@ -406,7 +407,9 @@ class ExtractRAMLocations(gym.ObservationWrapper):
         obs_ram = np.array([np.clip(obs[self.ram_variables_dict["ball_x"]] - self.offsets["ball_x"], 0, 159),
                             np.clip(obs[self.ram_variables_dict["enemy_y"]] - self.offsets["enemy_y"], 0, 209),
                             np.clip(obs[self.ram_variables_dict["player_y"]] - self.offsets["player_y"], 0, 209),
-                            np.clip(obs[self.ram_variables_dict["ball_y"]] - self.offsets["ball_y"], 0, 209)], dtype='float64')
+                            np.clip(obs[self.ram_variables_dict["ball_y"]] - self.offsets["ball_y"], 0, 209),
+                            obs[self.ram_variables_dict["enemy_score"]], obs[self.ram_variables_dict["player_score"]]], dtype='float64')
+        # print(f"score e {obs_ram[4]} score p {obs_ram[5]}")
         # print(f"{obs_ram[0]} {obs_ram[1]} {obs_ram[2]} {obs_ram[3]}")
         if "pong" in self.game_name:
             assert len(obs_ram) == self.observation_space_pong
@@ -464,12 +467,12 @@ class FrameStackRAMFrameSkip(gym.Wrapper):
             self.observation_space = spaces.Box(
                 low=env.observation_space.low[0],  # scalar value needed! low respectively high is an array of dim shape...
                 high=env.observation_space.high[0],
-                shape=(2,),
+                shape=(4,),
                 dtype=np.float32
             )
             self.upper_bound = (209-15)/255.
             self.lower_bound = 35 / 255.
-            self.obs_traj = np.zeros((2,), dtype=np.float32)
+            self.obs_traj = np.zeros(self.observation_space.shape, dtype=np.float32)
         else:
             self.observation_space = spaces.Box(
                 low=env.observation_space.low[0],  # scalar value needed! low respectively high is an array of dim shape...
@@ -528,7 +531,7 @@ class FrameStackRAMFrameSkip(gym.Wrapper):
     def _get_ob(self, reset=False):
         assert len(self.frames) == self.k
         if self.debug_trajectory:
-            player_y = self.frames[-1][-2]
+            player_y = self.frames[-1][2]
             if reset:
                 # weird workaround, if np-array is created here --> often problems with shape (2,1) instead of (2,)...
                 self.obs_traj[0] = player_y
@@ -537,6 +540,8 @@ class FrameStackRAMFrameSkip(gym.Wrapper):
                 endpoint, ball_v_x, ball_v_y = self._getTrajectoryEndPoint(self.frames)
                 self.obs_traj[0] = self._getBoundedValue(endpoint)
                 self.obs_traj[1] = player_y # self._getBoundedValue(player_y)
+                self.obs_traj[2] = self.frames[-1][4]
+                self.obs_traj[2] = self.frames[-1][5]
                 # do not save plots on GPU (doesn't make sense with multiprocessing of envs/workers)
                 if not torch.cuda.is_available() and self.counter > 10 and self.counter < 310: #  and not torch.cuda.is_available:
                     obs_ram = self.frames[-1]
@@ -545,7 +550,7 @@ class FrameStackRAMFrameSkip(gym.Wrapper):
                     im = self.env.render('rgb_array')
                     # center: tuple(COL, ROW) --> here: (x, y)
                     # ball
-                    cv2.circle(im, (int(obs_ram[0]*255), int(255*obs_ram[-1])), 6, color=(255, 255, 0), thickness=1)
+                    cv2.circle(im, (int(obs_ram[0]*255), int(255*obs_ram[3])), 6, color=(255, 255, 0), thickness=1)
                     # enemy
                     cv2.circle(im, (int(enemy_x), int(255*obs_ram[1])), 2, color=(0, 0, 0), thickness=-1)
                     # player
@@ -554,9 +559,9 @@ class FrameStackRAMFrameSkip(gym.Wrapper):
                     cv2.circle(im, (int(player_x), int(255*self.obs_traj[0])), 5, color=(255, 0, 0), thickness=3)
                     # im = cv2.cvtColor(im, cv2.COLOR_RGB2GRAY)
                     im = Image.fromarray(im)
-                    im.save(f"{self.dump_path}{self.counter}_{int(255*self.obs_traj[0])}_{int(255*self.obs_traj[1])}_v_{ball_v_x*255}_{ball_v_y*255}_posball_{255*obs_ram[0]}_{255*obs_ram[-1]}.png")
+                    im.save(f"{self.dump_path}{self.counter}_{int(255*self.obs_traj[0])}_{int(255*self.obs_traj[1])}_v_{ball_v_x*255}_{ball_v_y*255}_posball_{255*obs_ram[0]}_{255*obs_ram[3]}.png")
                 self.counter += 1
-            assert self.obs_traj.shape==(2,)
+            assert self.obs_traj.shape==(4,)
 
             return self.obs_traj
         else:
