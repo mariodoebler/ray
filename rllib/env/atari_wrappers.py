@@ -392,14 +392,17 @@ class ExtractRAMLocations(gym.ObservationWrapper):
                 "player_x": 48,
                 "player_y": 5
             }
+            self.dump_path = os.path.join(Path.home(), "MA/datadump/ram/pong_traj/")
         if "breakout" in self.game_name:
             dict_game.pop("score", None)
+            dict_game.pop("blocks_hit_count", None)
             if not self.breakout_keep_blocks: # --> remove them all (30 variables!)
                 for i in range(30):
-                    dict_game.pop(f"block_bit_map_{i}")
+                    dict_game.pop(f"block_bit_map_{i}", None)
             self.offsets = dict(ball_x=48,
                                          ball_y=-11,
                                          player_x=40)
+            self.dump_path = os.path.join(Path.home(), "MA/datadump/ram/breakout_traj/")
 
         self.ram_variables_dict = dict_game
 
@@ -413,7 +416,6 @@ class ExtractRAMLocations(gym.ObservationWrapper):
 
         self.observation_space_pong = 6
         self.counter = 0
-        self.dump_path = os.path.join(Path.home(), "MA/datadump/ram/pong_traj/")
 
     def observation(self, obs):
         if "pong" in self.game_name:
@@ -479,12 +481,13 @@ class FrameStackRAMFrameSkip(gym.Wrapper):
 
         self.k = k
         self._skip = skip
-        self.debug_trajectory = debug_trajectory
+        self.debug_trajectory_pong = debug_trajectory and "pong" in env.unwrapped.spec.id.lower()
+        self.debug_trajectory_breakout = debug_trajectory and "breakout" in env.unwrapped.spec.id.lower()
 
         self.frames = deque([], maxlen=k)
         shp = env.observation_space.shape
         assert len(shp) == 1, "Observation-Space of an environment based on the RAM-State should just be 1 before applying framestacking!"
-        if self.debug_trajectory:
+        if self.debug_trajectory_pong:
             self.observation_space = spaces.Box(
                 low=env.observation_space.low[0],  # scalar value needed! low respectively high is an array of dim shape...
                 high=env.observation_space.high[0],
@@ -494,6 +497,18 @@ class FrameStackRAMFrameSkip(gym.Wrapper):
             self.upper_bound = (209-15)/255.
             self.lower_bound = 35 / 255.
             self.obs_traj = np.zeros(self.observation_space.shape, dtype=np.float32)
+            self.dump_path = os.path.join(Path.home(), "MA/datadump/ram/pong_traj/")
+        elif self.debug_trajectory_breakout:
+            self.observation_space = spaces.Box(
+                low=env.observation_space.low[0],  # scalar value needed! low respectively high is an array of dim shape...
+                high=env.observation_space.high[0],
+                shape=(2,),
+                dtype=np.float32
+            )
+            self.upper_bound = (209-93)/255.
+            self.side_bound = 8 / 255.
+            self.obs_traj = np.zeros(self.observation_space.shape, dtype=np.float32)
+            self.dump_path = os.path.join(Path.home(), "MA/datadump/ram/breakout_traj/")
         else:
             self.observation_space = spaces.Box(
                 low=env.observation_space.low[0],  # scalar value needed! low respectively high is an array of dim shape...
@@ -502,9 +517,8 @@ class FrameStackRAMFrameSkip(gym.Wrapper):
                 dtype=np.float32
             )
         self.counter = 0
-        self.dump_path = os.path.join(Path.home(), "MA/datadump/ram/pong_traj/")
 
-    def _getTrajectoryEndPoint(self, obs_ram):
+    def _getTrajectoryEndPointPong(self, obs_ram):
         ball_x = obs_ram[-1][0]
         ball_y = obs_ram[-1][3]
 
@@ -520,6 +534,21 @@ class FrameStackRAMFrameSkip(gym.Wrapper):
 
         return endpoint, ball_v_x, ball_v_y
 
+    def _getTrajectoryEndPointBreakout(self, obs_ram):
+        ball_x = obs_ram[-1][1]
+        ball_y = obs_ram[-1][2]
+
+        ball_v_x = ball_x - obs_ram[-2][1]
+        ball_v_y = ball_y - obs_ram[-2][2]
+
+        if (np.isclose(ball_v_x, 0)) or np.isclose(ball_v_y, 0) or (abs(ball_v_x) > 20/255.) or abs(ball_v_y) > 20/255.:
+            endpoint = ball_x
+        else:
+            v_quotient_x_y = ball_v_x / ball_v_y
+
+            endpoint = v_quotient_x_y * ((190/255.) - ball_y) + ball_x
+
+        return endpoint, ball_v_x, ball_v_y
 
     def reset(self):
         ob = self.env.reset()
@@ -540,7 +569,7 @@ class FrameStackRAMFrameSkip(gym.Wrapper):
         self.frames.append(np.expand_dims(ob, axis=1))
         return self._get_ob(), total_reward, done, info
 
-    def _getBoundedValue(self, value):
+    def _getBoundedValuePong(self, value):
         value_unprocessed = value
         if value > self.upper_bound:
             value = self.upper_bound - (value - self.upper_bound)
@@ -549,20 +578,29 @@ class FrameStackRAMFrameSkip(gym.Wrapper):
         clipped_val = np.clip(value, 0, 209/255.) # y-value --> range[0, 209]
         return clipped_val
 
+    def _getBoundedValueBreakout(self, value):
+        value_unprocessed = value
+        if value < self.side_bound:
+            value = self.side_bound - (value - self.side_bound)
+        if value > (159-self.side_bound):
+            value = 2*(159-self.side_bound) - value
+        clipped_val = np.clip(value, 0, 159/255.) # x-value --> range[0, 159]
+        return clipped_val
+
     def _get_ob(self, reset=False):
         assert len(self.frames) == self.k
-        if self.debug_trajectory:
+        if self.debug_trajectory_pong:
             player_y = self.frames[-1][2]
             if reset:
                 # weird workaround, if np-array is created here --> often problems with shape (2,1) instead of (2,)...
                 self.obs_traj[0] = player_y
                 self.obs_traj[1] = player_y
             else:
-                endpoint, ball_v_x, ball_v_y = self._getTrajectoryEndPoint(self.frames)
-                self.obs_traj[0] = self._getBoundedValue(endpoint)
+                endpoint, ball_v_x, ball_v_y = self._getTrajectoryEndPointPong(self.frames)
+                self.obs_traj[0] = self._getBoundedValuePong(endpoint)
                 self.obs_traj[1] = player_y # self._getBoundedValue(player_y)
                 self.obs_traj[2] = self.frames[-1][4]
-                self.obs_traj[2] = self.frames[-1][5]
+                self.obs_traj[3] = self.frames[-1][5]
                 # do not save plots on GPU (doesn't make sense with multiprocessing of envs/workers)
                 if not torch.cuda.is_available() and self.counter > 10 and self.counter < 310: #  and not torch.cuda.is_available:
                     obs_ram = self.frames[-1]
@@ -585,6 +623,38 @@ class FrameStackRAMFrameSkip(gym.Wrapper):
             assert self.obs_traj.shape==(4,)
 
             return self.obs_traj
+        if self.debug_trajectory_breakout:
+            player_x = self.frames[-1][0]
+            if reset:
+                # weird workaround, if np-array is created here --> often problems with shape (2,1) instead of (2,)...
+                self.obs_traj[0] = player_x
+                self.obs_traj[1] = player_x
+            else:
+                endpoint, ball_v_x, ball_v_y = self._getTrajectoryEndPointBreakout(self.frames)
+                self.obs_traj[0] = self._getBoundedValueBreakout(endpoint)
+                self.obs_traj[1] = player_x # self._getBoundedValue(player_y)
+                # do not save plots on GPU (doesn't make sense with multiprocessing of envs/workers)
+                if not torch.cuda.is_available() and self.counter > 10 and self.counter < 310: #  and not torch.cuda.is_available:
+                    obs_ram = self.frames[-1]
+                    player_y = 209-20
+                    im = self.env.render('rgb_array')
+                    # center: tuple(COL, ROW) --> here: (x, y)
+                    # ball
+                    cv2.circle(im, (int(obs_ram[1]*255), int(255*obs_ram[2])), 6, color=(255, 255, 0), thickness=1)
+                    # player
+                    cv2.circle(im, (int(255*obs_ram[0]), player_y), 3, color=(255, 255, 0), thickness=-1)
+                    # endpoint
+                    cv2.circle(im, (int(255*self.obs_traj[0]), player_y), 5, color=(255, 0, 0), thickness=3)
+                    print(f"endoint: ({255*self.obs_traj[0]}, {player_y}); unbounded: {255*endpoint}")
+                    # im = cv2.cvtColor(im, cv2.COLOR_RGB2GRAY)
+                    im = Image.fromarray(im)
+                    path = f"{self.dump_path}{self.counter}_{int(255*self.obs_traj[0])}_{int(255*self.obs_traj[1])}_v_{ball_v_x*255}_{ball_v_y*255}_posball_{255*obs_ram[1]}_{255*obs_ram[2]}.png"
+                    im.save(path)
+                self.counter += 1
+            assert self.obs_traj.shape==(2,)
+
+            return self.obs_traj
+
         else:
             return np.concatenate(self.frames, axis=1)
 
