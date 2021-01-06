@@ -238,7 +238,8 @@ class WarpFrame(gym.ObservationWrapper):
         gym.ObservationWrapper.__init__(self, env)
         self.width = dim
         self.height = dim
-        self.cut_scores = cut_scores and "pong" in env.spec.id.lower()
+        self.cut_scores_pong = cut_scores and "pong" in env.spec.id.lower()
+        self.cut_scores_breakout = cut_scores and "breakout" in env.spec.id.lower()
         self.observation_space = spaces.Box(
             low=0,
             high=255,
@@ -247,8 +248,10 @@ class WarpFrame(gym.ObservationWrapper):
 
     def observation(self, frame):
         frame = cv2.cvtColor(frame, cv2.COLOR_RGB2GRAY)
-        if self.cut_scores:
+        if self.cut_scores_pong:
             frame[:30, :] = 236 # cut away the upper 36px of Pong --> cut scores (cpu and player) away
+        elif self.cut_scores_breakout:
+            frame[:16, :] = 0
         frame = cv2.resize(
             frame, (self.width, self.height), interpolation=cv2.INTER_AREA)
         return frame[:, :, None]
