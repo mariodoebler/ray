@@ -342,7 +342,7 @@ def wrap_rectangular_deepmind(env, dim_height=210, dim_width=160, framestack=Fal
         env = FrameStack(env, 4)
     return env
     
-def wrap_ram(env, framestack=True, extract_ram=True, debug_trajectory=False):
+def wrap_ram(env, framestack=True, extract_ram=True, debug_trajectory=False, breakout_keep_blocks=True):
     # ORDER is important
     # FIRST extract rams, then (maybe) stack the observations
     # env = MonitorEnv(env)
@@ -358,7 +358,7 @@ def wrap_ram(env, framestack=True, extract_ram=True, debug_trajectory=False):
 
 
     if extract_ram:
-        env = ExtractRAMLocations(env)
+        env = ExtractRAMLocations(env, breakout_keep_blocks=breakout_keep_blocks)
 
     if framestack:
         env = FrameStackRAMFrameSkip(env, k=4, skip=4, debug_trajectory=debug_trajectory)
@@ -367,13 +367,14 @@ def wrap_ram(env, framestack=True, extract_ram=True, debug_trajectory=False):
     return env
 	
 class ExtractRAMLocations(gym.ObservationWrapper):
-    def __init__(self, env):
+    def __init__(self, env, breakout_keep_blocks):
         super().__init__(env)
         assert len(env.observation_space.shape) == 1
         self.env = env
         # necessary for lookup in the dictionary
         self.game_name = self.env.unwrapped.spec.id.split(
             "-")[0].split("No")[0].split("Deterministic")[0].lower()
+        self.breakout_keep_blocks = breakout_keep_blocks
 
         dict_game = atari_dict[self.game_name]
         if "pong" in self.game_name:
@@ -383,12 +384,29 @@ class ExtractRAMLocations(gym.ObservationWrapper):
             pass
             # dict_game.pop("enemy_score", None)
             # dict_game.pop("player_score", None)
+            self.offsets = {
+                "ball_x": 48,
+                "ball_y": 12,
+                "enemy_x": 45,
+                "enemy_y": 7,
+                "player_x": 48,
+                "player_y": 5
+            }
+        if "breakout" in self.game_name:
+            dict_game.pop("score", None)
+            if not self.breakout_keep_blocks: # --> remove them all (30 variables!)
+                for i in range(30):
+                    dict_game.pop(f"block_bit_map_{i}")
+            self.offsets = dict(ball_x=48,
+                                         ball_y=-11,
+                                         player_x=40)
+
         self.ram_variables_dict = dict_game
 
         new_obs_space = gym.spaces.Box(
             low=0,
             high=1,
-            shape=(6,),
+            shape=(len(self.ram_variables_dict),),
             dtype=np.float64
         )
         self.observation_space = new_obs_space
@@ -396,22 +414,22 @@ class ExtractRAMLocations(gym.ObservationWrapper):
         self.observation_space_pong = 6
         self.counter = 0
         self.dump_path = os.path.join(Path.home(), "MA/datadump/ram/pong_traj/")
-        self.offsets = {
-            "ball_x": 48,
-            "ball_y": 12,
-            "enemy_x": 45,
-            "enemy_y": 7,
-            "player_x": 48,
-            "player_y": 5
-        }
-
 
     def observation(self, obs):
-        obs_ram = np.array([np.clip(obs[self.ram_variables_dict["ball_x"]] - self.offsets["ball_x"], 0, 159),
-                            np.clip(obs[self.ram_variables_dict["enemy_y"]] - self.offsets["enemy_y"], 0, 209),
-                            np.clip(obs[self.ram_variables_dict["player_y"]] - self.offsets["player_y"], 0, 209),
-                            np.clip(obs[self.ram_variables_dict["ball_y"]] - self.offsets["ball_y"], 0, 209),
-                            obs[self.ram_variables_dict["enemy_score"]], obs[self.ram_variables_dict["player_score"]]], dtype='float64')
+        if "pong" in self.game_name:
+                obs_ram = np.array([np.clip(obs[self.ram_variables_dict["ball_x"]] - self.offsets["ball_x"], 0, 159),
+                                    np.clip(obs[self.ram_variables_dict["enemy_y"]] - self.offsets["enemy_y"], 0, 209),
+                                    np.clip(obs[self.ram_variables_dict["player_y"]] - self.offsets["player_y"], 0, 209),
+                                    np.clip(obs[self.ram_variables_dict["ball_y"]] - self.offsets["ball_y"], 0, 209),
+                                    obs[self.ram_variables_dict["enemy_score"]], obs[self.ram_variables_dict["player_score"]]], dtype='float64')
+        elif "breakout" in self.game_name:
+            obs_ram = np.array([np.clip(obs[self.ram_variables_dict["player_x"]] - self.offsets["player_x"], 0, 159),
+                                np.clip(obs[self.ram_variables_dict["ball_x"]] - self.offsets["ball_x"], 0, 159),
+                                np.clip(obs[self.ram_variables_dict["ball_y"]] - self.offsets["ball_y"], 0, 209)], dtype='float64')
+            if self.breakout_keep_blocks:
+                block_bit_list = [obs[self.ram_variables_dict[f"block_bit_map_{i}"]]   for i in range(30)]
+                obs_ram = np.append(obs_ram, np.asarray(block_bit_list))
+
         # print(f"score e {obs_ram[4]} score p {obs_ram[5]}")
         # print(f"{obs_ram[0]} {obs_ram[1]} {obs_ram[2]} {obs_ram[3]}")
         if "pong" in self.game_name:

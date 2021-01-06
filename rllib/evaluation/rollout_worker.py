@@ -369,12 +369,13 @@ class RolloutWorker(ParallelIteratorWorker):
                 return env
         elif self.env.unwrapped.spec is not None and "ram" in self.env.unwrapped.spec.id and model_config.get("custom_model_config", {}).get("extract_game_specific_ram_states", None):
             debug_trajectory = model_config.get("custom_model_config").get("debug_trajectory", False) # if not set --> False
+            breakout_keep_blocks = model_config.get("custom_model_config").get("breakout_keep_blocks", True) # if not set --> True
             if model_config.get("framestack", False): # if nothing is set --> assume NO framestacking
                 def wrap(env):
-                   return wrap_ram(env, framestack=True, extract_ram=True, debug_trajectory=debug_trajectory)
+                   return wrap_ram(env, framestack=True, extract_ram=True, debug_trajectory=debug_trajectory, breakout_keep_blocks=breakout_keep_blocks)
             else: # no framestacking --> just extract RAMLocations
                 def wrap(env):
-                    return wrap_ram(env, framestack=False, extract_ram=True, debug_trajectory=debug_trajectory)
+                    return wrap_ram(env, framestack=False, extract_ram=True, debug_trajectory=debug_trajectory, breakout_keep_blocks=breakout_keep_blocks)
         
         elif self.env.unwrapped.spec is not None and "ram" in self.env.unwrapped.spec.id and model_config.get("framestack", False):
             def wrap(env):
