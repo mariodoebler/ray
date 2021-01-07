@@ -342,7 +342,7 @@ def wrap_rectangular_deepmind(env, dim_height=210, dim_width=160, framestack=Fal
         env = FrameStack(env, 4)
     return env
     
-def wrap_ram(env, framestack=True, extract_ram=True, debug_trajectory=False, breakout_keep_blocks=True):
+def wrap_ram(env, framestack=True, extract_ram=True, debug_trajectory=False, encode_as_bits=False, breakout_keep_blocks=True):
     # ORDER is important
     # FIRST extract rams, then (maybe) stack the observations
     # env = gym_wrappers.Monitor(
@@ -368,9 +368,31 @@ def wrap_ram(env, framestack=True, extract_ram=True, debug_trajectory=False, bre
     if framestack:
         env = FrameStackRAMFrameSkip(env, k=2, skip=2, debug_trajectory=debug_trajectory)
     else: # no frameSTACKING but do SKIP
-        env = FrameSkipRAM(env, skip=4)
+        env = FrameSkipRAM(env, skip=2)
+    if encode_as_bits:
+        env = BitEncodingWrapper(env)
     return env
-	
+
+class BitEncodingWrapper(gym.ObservationWrapper):
+    def __init__(self, env):
+        super().__init__(env)
+        new_observation_space_shape = (env.observation_space.shape[0] * 8, )
+        new_observation_space = gym.spaces.Box(
+            low=0,
+            high=1,
+            shape=new_observation_space_shape,
+            dtype=np.bool  #  True / False
+        )
+        assert len(env.observation_space.shape) == 1
+        self.observation_space = new_observation_space
+
+    def observation(self, obs):
+        if np.max(obs) < 1.0001:
+            obs *= 255
+        obs = obs.astype(np.uint8)
+        return np.unpackbits(obs)
+
+
 class ExtractRAMLocations(gym.ObservationWrapper):
     def __init__(self, env, breakout_keep_blocks):
         super().__init__(env)
@@ -384,11 +406,11 @@ class ExtractRAMLocations(gym.ObservationWrapper):
         dict_game = atari_dict[self.game_name]
         if "pong" in self.game_name:
             # remove these keys as they're not relevant for this specific game!
-            # dict_game.pop("player_x", None)
-            # dict_game.pop("enemy_x", None)
-            pass
-            # dict_game.pop("enemy_score", None)
-            # dict_game.pop("player_score", None)
+            dict_game.pop("player_x", None)
+            dict_game.pop("enemy_x", None)
+            # pass
+            dict_game.pop("enemy_score", None)
+            dict_game.pop("player_score", None)
             self.offsets = {
                 "ball_x": 48,
                 "ball_y": 12,
@@ -427,8 +449,8 @@ class ExtractRAMLocations(gym.ObservationWrapper):
                 obs_ram = np.array([np.clip(obs[self.ram_variables_dict["ball_x"]] - self.offsets["ball_x"], 0, 159),
                                     np.clip(obs[self.ram_variables_dict["enemy_y"]] - self.offsets["enemy_y"], 0, 209),
                                     np.clip(obs[self.ram_variables_dict["player_y"]] - self.offsets["player_y"], 0, 209),
-                                    np.clip(obs[self.ram_variables_dict["ball_y"]] - self.offsets["ball_y"], 0, 209),
-                                    obs[self.ram_variables_dict["enemy_score"]], obs[self.ram_variables_dict["player_score"]]], dtype='float64')
+                                    np.clip(obs[self.ram_variables_dict["ball_y"]] - self.offsets["ball_y"], 0, 209)], dtype='float64')
+                                    # obs[self.ram_variables_dict["enemy_score"]], obs[self.ram_variables_dict["player_score"]]], dtype='float64')
         elif "breakout" in self.game_name:
             obs_ram = np.array([np.clip(obs[self.ram_variables_dict["player_x"]] - self.offsets["player_x"], 0, 159),
                                 np.clip(obs[self.ram_variables_dict["ball_x"]] - self.offsets["ball_x"], 0, 159),
@@ -439,8 +461,6 @@ class ExtractRAMLocations(gym.ObservationWrapper):
 
         # print(f"score e {obs_ram[4]} score p {obs_ram[5]}")
         # print(f"{obs_ram[0]} {obs_ram[1]} {obs_ram[2]} {obs_ram[3]}")
-        if "pong" in self.game_name:
-            assert len(obs_ram) == self.observation_space_pong
         return obs_ram / 255.0
 
 class FrameSkipRAM(gym.Wrapper):
