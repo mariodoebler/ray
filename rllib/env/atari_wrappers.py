@@ -491,7 +491,7 @@ class FrameStackRAMFrameSkip(gym.Wrapper):
             self.observation_space = spaces.Box(
                 low=env.observation_space.low[0],  # scalar value needed! low respectively high is an array of dim shape...
                 high=env.observation_space.high[0],
-                shape=(4,),
+                shape=(2,),
                 dtype=np.float32
             )
             self.upper_bound = (209-15)/255.
@@ -599,8 +599,8 @@ class FrameStackRAMFrameSkip(gym.Wrapper):
                 endpoint, ball_v_x, ball_v_y = self._getTrajectoryEndPointPong(self.frames)
                 self.obs_traj[0] = self._getBoundedValuePong(endpoint)
                 self.obs_traj[1] = player_y # self._getBoundedValue(player_y)
-                self.obs_traj[2] = self.frames[-1][4]
-                self.obs_traj[3] = self.frames[-1][5]
+                # self.obs_traj[2] = self.frames[-1][4]
+                # self.obs_traj[3] = self.frames[-1][5]
                 # do not save plots on GPU (doesn't make sense with multiprocessing of envs/workers)
                 if not torch.cuda.is_available() and self.counter > 10 and self.counter < 310: #  and not torch.cuda.is_available:
                     obs_ram = self.frames[-1]
@@ -620,7 +620,7 @@ class FrameStackRAMFrameSkip(gym.Wrapper):
                     im = Image.fromarray(im)
                     im.save(f"{self.dump_path}{self.counter}_{int(255*self.obs_traj[0])}_{int(255*self.obs_traj[1])}_v_{ball_v_x*255}_{ball_v_y*255}_posball_{255*obs_ram[0]}_{255*obs_ram[3]}.png")
                 self.counter += 1
-            assert self.obs_traj.shape==(4,)
+            assert self.obs_traj.shape==(2,)
 
             return self.obs_traj
         if self.debug_trajectory_breakout:
