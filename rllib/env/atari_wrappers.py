@@ -345,7 +345,12 @@ def wrap_rectangular_deepmind(env, dim_height=210, dim_width=160, framestack=Fal
 def wrap_ram(env, framestack=True, extract_ram=True, debug_trajectory=False, breakout_keep_blocks=True):
     # ORDER is important
     # FIRST extract rams, then (maybe) stack the observations
-    # env = MonitorEnv(env)
+    # env = gym_wrappers.Monitor(
+    #     env=env,
+    #     directory=video_dir,
+    #     video_callable=lambda x: True,
+    #     force=True)
+    env = MonitorEnv(env)
     env = NoopResetEnv(env, noop_max=30)
     # if "NoFrameskip" in env.spec.id:
         # env = MaxAndSkipEnv(env, skip=4)
@@ -361,7 +366,7 @@ def wrap_ram(env, framestack=True, extract_ram=True, debug_trajectory=False, bre
         env = ExtractRAMLocations(env, breakout_keep_blocks=breakout_keep_blocks)
 
     if framestack:
-        env = FrameStackRAMFrameSkip(env, k=4, skip=4, debug_trajectory=debug_trajectory)
+        env = FrameStackRAMFrameSkip(env, k=2, skip=2, debug_trajectory=debug_trajectory)
     else: # no frameSTACKING but do SKIP
         env = FrameSkipRAM(env, skip=4)
     return env
