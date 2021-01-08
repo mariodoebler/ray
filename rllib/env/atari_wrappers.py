@@ -542,6 +542,7 @@ class FrameStackRAMFrameSkip(gym.Wrapper):
                 dtype=np.float32
             )
         self.counter = 0
+        self.last_endpoint = None
 
     def _getTrajectoryEndPointPong(self, obs_ram):
         ball_x = obs_ram[-1][0]
@@ -551,11 +552,16 @@ class FrameStackRAMFrameSkip(gym.Wrapper):
         ball_v_y = ball_y - obs_ram[-2][3]
 
         if (np.isclose(ball_v_x, 0)) or np.isclose(ball_v_y, 0) or (abs(ball_v_x) > 20/255.) or abs(ball_v_y) > 20/255.:
-            endpoint = ball_y
+            if self.last_endpoint:
+                endpoint = self.last_endpoint
+            else:
+                endpoint = ball_y
         else:
             v_quotient_y_x = ball_v_y / ball_v_x
 
+            ## update
             endpoint = v_quotient_y_x * ((140/255.) - ball_x) + ball_y
+            self.last_endpoint = endpoint
 
         return endpoint, ball_v_x, ball_v_y
 
@@ -567,11 +573,15 @@ class FrameStackRAMFrameSkip(gym.Wrapper):
         ball_v_y = ball_y - obs_ram[-2][2]
 
         if (np.isclose(ball_v_x, 0)) or np.isclose(ball_v_y, 0) or (abs(ball_v_x) > 20/255.) or abs(ball_v_y) > 20/255.:
-            endpoint = ball_x
+            if self.last_endpoint:
+                endpoint = self.last_endpoint
+            else:
+                endpoint = ball_x
         else:
             v_quotient_x_y = ball_v_x / ball_v_y
 
             endpoint = v_quotient_x_y * ((190/255.) - ball_y) + ball_x
+            self.last_endpoint = endpoint
 
         return endpoint, ball_v_x, ball_v_y
 
