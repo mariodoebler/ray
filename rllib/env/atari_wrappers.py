@@ -7,6 +7,7 @@ cv2.ocl.setUseOpenCL(False)
 from PIL import Image
 from atariari.benchmark.ram_annotations import atari_dict
 from pathlib import Path
+from datetime import datetime
 import os
 import torch
 
@@ -233,13 +234,13 @@ class WarpRectangularFrame(gym.ObservationWrapper):
         return frame[:, :, None]
 
 class WarpFrame(gym.ObservationWrapper):
-    def __init__(self, env, dim, cut_scores):
-        """Warp frames to the specified size (dim x dim)."""
+    def __init__(self, env, dim):
+        """Warp frames to the specified size (height x width)."""
         gym.ObservationWrapper.__init__(self, env)
         self.width = dim
         self.height = dim
-        self.cut_scores_pong = cut_scores and "pong" in env.spec.id.lower()
-        self.cut_scores_breakout = cut_scores and "breakout" in env.spec.id.lower()
+        self.overlay_scores_pong = "pong" in env.spec.id.lower()
+        # self.saved_example_obs = False
         self.observation_space = spaces.Box(
             low=0,
             high=255,
@@ -248,10 +249,14 @@ class WarpFrame(gym.ObservationWrapper):
 
     def observation(self, frame):
         frame = cv2.cvtColor(frame, cv2.COLOR_RGB2GRAY)
-        if self.cut_scores_pong:
-            frame[:30, :] = 236 # cut away the upper 36px of Pong --> cut scores (cpu and player) away
-        elif self.cut_scores_breakout:
-            frame[:16, :] = 0
+        if self.overlay_scores_pong:
+            frame[:30, :] = 236 # overlay the upper 30px of Pong
+            # if not self.saved_example_obs:
+            #     im = Image.fromarray(frame)
+            #     now = datetime.now()
+            #     im.save(os.path.join(Path.home(), 'MA', 'datadump', 'obs') + "1.png")
+            #     self.saved_example_obs = True
+
         frame = cv2.resize(
             frame, (self.width, self.height), interpolation=cv2.INTER_AREA)
         return frame[:, :, None]
@@ -296,7 +301,7 @@ class ScaledFloatFrame(gym.ObservationWrapper):
         # with smaller replay buffers only.
         return np.array(observation).astype(np.float32) / 255.0
 
-def wrap_deepmind(env, dim=84, framestack=True, cut_scores=False):
+def wrap_deepmind(env, dim=84, framestack=True):
     """Configure environment for DeepMind-style Atari.
 
     Note that we assume reward clipping is done outside the wrapper.
@@ -312,7 +317,7 @@ def wrap_deepmind(env, dim=84, framestack=True, cut_scores=False):
     env = EpisodicLifeEnv(env)
     if "FIRE" in env.unwrapped.get_action_meanings():
         env = FireResetEnv(env)
-    env = WarpFrame(env, dim, cut_scores)
+    env = WarpFrame(env, dim)
     # env = ScaledFloatFrame(env)  # TODO: use for dqn?
     # env = ClipRewardEnv(env)  # reward clipping is handled by policy eval
     if framestack:
