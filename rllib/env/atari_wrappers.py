@@ -347,7 +347,7 @@ def wrap_rectangular_deepmind(env, dim_height=210, dim_width=160, framestack=Fal
         env = FrameStack(env, 4)
     return env
     
-def wrap_ram(env, framestack=True, extract_ram=True, debug_trajectory=False, encode_as_bits=False, breakout_keep_blocks=True):
+def wrap_ram(env, framestack=True, extract_ram=True, debug_trajectory=False, encode_as_bits=False, breakout_keep_blocks=False):
     # ORDER is important
     # FIRST extract rams, then (maybe) stack the observations
     # env = gym_wrappers.Monitor(
@@ -405,7 +405,7 @@ class BitEncodingWrapper(gym.ObservationWrapper):
 
 
 class ExtractRAMLocations(gym.ObservationWrapper):
-    def __init__(self, env, breakout_keep_blocks):
+    def __init__(self, env, breakout_keep_blocks=False):
         super().__init__(env)
         assert len(env.observation_space.shape) == 1
         self.env = env
