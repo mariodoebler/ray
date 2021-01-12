@@ -319,10 +319,10 @@ def wrap_deepmind(env, dim=84, framestack=True):
     if "FIRE" in env.unwrapped.get_action_meanings():
         env = FireResetEnv(env)
     env = WarpFrame(env, dim)
-    # env = ScaledFloatFrame(env)  # TODO: use for dqn?
     # env = ClipRewardEnv(env)  # reward clipping is handled by policy eval
     if framestack:
         env = FrameStack(env, 4)
+    env = ScaledFloatFrame(env)  # TODO: use for dqn?
     return env
 
 def wrap_rectangular_deepmind(env, dim_height=210, dim_width=160, framestack=False):
@@ -342,10 +342,10 @@ def wrap_rectangular_deepmind(env, dim_height=210, dim_width=160, framestack=Fal
     if "FIRE" in env.unwrapped.get_action_meanings():
         env = FireResetEnv(env)
     env = WarpRectangularFrame(env, dim_height=dim_height, dim_width=dim_width)
-    # env = ScaledFloatFrame(env)  # TODO: use for dqn?
     # env = ClipRewardEnv(env)  # reward clipping is handled by policy eval
     if framestack:
         env = FrameStack(env, 4)
+    env = ScaledFloatFrame(env)  # TODO: use for dqn?
     return env
     
 def wrap_ram(env, framestack=True, extract_ram=True, debug_trajectory=False, encode_as_bits=False, breakout_keep_blocks=False):
@@ -364,11 +364,13 @@ def wrap_ram(env, framestack=True, extract_ram=True, debug_trajectory=False, enc
     if "FIRE" in env.unwrapped.get_action_meanings():
         env = FireResetEnv(env)
     # env = WarpFrame(env, dim)
-    # env = ScaledFloatFrame(env)  # TODO: use for dqn?
+    # scaling is done by extractRAM
     # env = ClipRewardEnv(env)  # reward clipping is handled by policy eval
 
     if extract_ram:
         env = ExtractRAMLocations(env, breakout_keep_blocks=breakout_keep_blocks)
+    else:
+        env = ScaledFloatFrame(env)  # TODO: use for dqn?
 
     if framestack:
         env = FrameStackRAMFrameSkip(env, k=4, skip=4, debug_trajectory=debug_trajectory)
@@ -376,6 +378,7 @@ def wrap_ram(env, framestack=True, extract_ram=True, debug_trajectory=False, enc
         env = FrameSkipRAM(env, skip=2)
     if encode_as_bits:
         env = BitEncodingWrapper(env, framestack)
+
     return env
 
 class BitEncodingWrapper(gym.ObservationWrapper):
