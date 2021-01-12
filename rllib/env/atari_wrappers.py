@@ -374,20 +374,27 @@ def wrap_ram(env, framestack=True, extract_ram=True, debug_trajectory=False, enc
     else: # no frameSTACKING but do SKIP
         env = FrameSkipRAM(env, skip=2)
     if encode_as_bits:
-        env = BitEncodingWrapper(env)
+        env = BitEncodingWrapper(env, framestack)
     return env
 
 class BitEncodingWrapper(gym.ObservationWrapper):
-    def __init__(self, env):
+    def __init__(self, env, framestack=True):
         super().__init__(env)
-        new_observation_space_shape = (env.observation_space.shape[0] * 8, )
+        # shape[1] != 1 if framestacking (usually ==4)
+        if framestack:
+            new_observation_space_shape = (env.observation_space.shape[0] * 8 * env.observation_space.shape[1], )
+        else:
+            new_observation_space_shape = (env.observation_space.shape[0] * 8, )
+        # resulting observation layout:
+        # s0[0] s0[1] s0[2] s0[3] s1[0] s1[1] s1[2] s1[3] s2[0] s2[1] ...
+        # s0: first state variable
+        # indexing: first frame, second frame ,... (example for framestacking=True with 4)
         new_observation_space = gym.spaces.Box(
             low=0,
             high=1,
             shape=new_observation_space_shape,
             dtype=np.bool  #  True / False
         )
-        assert len(env.observation_space.shape) == 1
         self.observation_space = new_observation_space
 
     def observation(self, obs):
