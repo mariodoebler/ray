@@ -6,6 +6,7 @@ import cv2
 cv2.ocl.setUseOpenCL(False)
 from PIL import Image
 from atariari.benchmark.ram_annotations import atari_dict
+from test_atariari.utils.atari_offset_dict import getOffsetDict
 from pathlib import Path
 from datetime import datetime
 import os
@@ -414,6 +415,7 @@ class ExtractRAMLocations(gym.ObservationWrapper):
             "-")[0].split("No")[0].split("Deterministic")[0].lower()
         self.breakout_keep_blocks = breakout_keep_blocks
 
+        self.offsets = getOffsetDict(self.game_name)
         dict_game = atari_dict[self.game_name]
         if "pong" in self.game_name:
             # remove these keys as they're not relevant for this specific game!
@@ -421,14 +423,14 @@ class ExtractRAMLocations(gym.ObservationWrapper):
             dict_game.pop("enemy_x", None)
             dict_game.pop("enemy_score", None)
             dict_game.pop("player_score", None)
-            self.offsets = {
-                "ball_x": 48,
-                "ball_y": 12,
-                "enemy_x": 45,
-                "enemy_y": 7,
-                "player_x": 48,
-                "player_y": 5
-            }
+            # self.offsets = {
+            #     "ball_x": 48,
+            #     "ball_y": 12,
+            #     "enemy_x": 45,
+            #     "enemy_y": 7,
+            #     "player_x": 48,
+            #     "player_y": 5
+            # }
             self.dump_path = os.path.join(Path.home(), "MA/datadump/ram/pong_traj/")
         if "breakout" in self.game_name:
             dict_game.pop("score", None)
@@ -436,9 +438,9 @@ class ExtractRAMLocations(gym.ObservationWrapper):
             if not self.breakout_keep_blocks: # --> remove them all (30 variables!)
                 for i in range(30):
                     dict_game.pop(f"block_bit_map_{i}", None)
-            self.offsets = dict(ball_x=48,
-                                         ball_y=-11,
-                                         player_x=40)
+            # self.offsets = dict(ball_x=48,
+            #                              ball_y=-11,
+            #                              player_x=40)
             self.dump_path = os.path.join(Path.home(), "MA/datadump/ram/breakout_traj/")
 
         self.ram_variables_dict = dict_game
@@ -447,7 +449,7 @@ class ExtractRAMLocations(gym.ObservationWrapper):
             low=0,
             high=1,
             shape=(len(self.ram_variables_dict),),
-            dtype=np.float64
+            dtype=np.float32
         )
         self.observation_space = new_obs_space
 
