@@ -366,12 +366,11 @@ def wrap_ram(env, framestack=True, extract_ram=True, debug_trajectory=False, enc
     # env = ScaledFloatFrame(env)  # TODO: use for dqn?
     # env = ClipRewardEnv(env)  # reward clipping is handled by policy eval
 
-
     if extract_ram:
         env = ExtractRAMLocations(env, breakout_keep_blocks=breakout_keep_blocks)
 
     if framestack:
-        env = FrameStackRAMFrameSkip(env, k=2, skip=2, debug_trajectory=debug_trajectory)
+        env = FrameStackRAMFrameSkip(env, k=4, skip=4, debug_trajectory=debug_trajectory)
     else: # no frameSTACKING but do SKIP
         env = FrameSkipRAM(env, skip=2)
     if encode_as_bits:
@@ -413,7 +412,6 @@ class ExtractRAMLocations(gym.ObservationWrapper):
             # remove these keys as they're not relevant for this specific game!
             dict_game.pop("player_x", None)
             dict_game.pop("enemy_x", None)
-            # pass
             dict_game.pop("enemy_score", None)
             dict_game.pop("player_score", None)
             self.offsets = {
