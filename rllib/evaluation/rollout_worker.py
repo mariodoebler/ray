@@ -9,7 +9,7 @@ from typing import Callable, Any, List, Dict, Tuple, Union, Optional, \
     TYPE_CHECKING, Type, TypeVar
 
 import ray
-from ray.rllib.env.atari_wrappers import wrap_deepmind, wrap_rectangular_deepmind, is_atari, wrap_ram
+from ray.rllib.env.atari_wrappers import wrap_deepmind, wrap_rectangular_deepmind, is_atari, wrap_ram, wrap_deepmind_benchmark
 from ray.rllib.env.base_env import BaseEnv
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.env.external_env import ExternalEnv
@@ -334,6 +334,15 @@ class RolloutWorker(ParallelIteratorWorker):
 
             def wrap(env):
                 return env  # we can't auto-wrap these env types
+
+        elif is_atari(self.env) and not model_config.get("custom_preprocessor") and preprocessor_pref == "deepmind_benchmark":
+            self.preprocessing_enabled = False
+            if clip_rewards is None:
+                clip_rewards = True
+            
+            def wrap(env):
+                env = wrap_deepmind_benchmark(env)
+                return env
 
         elif is_atari(self.env) and \
                 not model_config.get("custom_preprocessor") and \

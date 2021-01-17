@@ -5,8 +5,13 @@ from gym import spaces
 import cv2
 cv2.ocl.setUseOpenCL(False)
 from PIL import Image
+from collections import defaultdict
 from atariari.benchmark.ram_annotations import atari_dict
+from benchmarking.utils.atari_dict_extended import atari_dict_extended
+from benchmarking.utils.process_velocities import threshold_velocities_per_game
 from test_atariari.utils.atari_offset_dict import getOffsetDict
+from atariari.benchmark.wrapper import InfoWrapper, AtariARIWrapper
+from test_atariari.wrapper.atari_wrapper import RemoveScoresFromLabelsPong
 from pathlib import Path
 from datetime import datetime
 import os
@@ -262,6 +267,7 @@ class WarpFrame(gym.ObservationWrapper):
             frame, (self.width, self.height), interpolation=cv2.INTER_AREA)
         return frame[:, :, None]
 
+
 class FrameStack(gym.Wrapper):
     def __init__(self, env, k):
         """Stack k last frames."""
@@ -290,6 +296,97 @@ class FrameStack(gym.Wrapper):
         assert len(self.frames) == self.k
         return np.concatenate(self.frames, axis=2)
 
+class FrameStackDeriveVelocitiesNonOverlapping(gym.Wrapper):
+    def __init__(self, env, k):
+        """Stack k last frames."""
+        gym.Wrapper.__init__(self, env)
+        self.k = k
+        self.frames = deque([], maxlen=k)
+        self.infos = deque([], maxlen=2)
+        shp = env.observation_space.shape
+        self.observation_space = spaces.Box(
+            low=0,
+            high=255,
+            shape=(shp[0], shp[1], shp[2] * k),
+            dtype=env.observation_space.dtype)
+
+        self.game_name = env.unwrapped.spec.id.split(
+            "-")[0].split("No")[0].split("Deterministic")[0]
+        self.additional_labels_dict = atari_dict_extended[self.game_name.lower(
+        )]
+        self.abs_threshold_invalid = threshold_velocities_per_game[self.game_name]
+
+
+        self.counter_just_1_info = 0
+
+    def reset(self):
+        self.infos.clear()  # --> len=0
+        ob = self.env.reset()
+        for _ in range(self.k):
+            self.frames.append(ob)
+        return self._get_ob()
+
+    def step(self, action):
+        ob, reward, done, info = self.env.step(action)
+        self.frames.append(ob)
+        self.infos.append(info)
+        return self._get_ob(), reward, done, self._get_info()
+
+    def _get_ob(self):
+        assert len(self.frames) == self.k
+        return np.concatenate(self.frames, axis=2)
+
+    def _get_info(self):
+        label_dict_added = {}
+        # if self.prev_frame_info:
+        if len(self.infos) == 2:
+            # --> derive velocities
+            info_latest_frame = self.infos[1]
+            label_dict_added, label_dict_added_valid = self.getAdditionalLabelDict(
+                latest_labels=info_latest_frame["labels"], #info_latest_frame['labels'],
+                second_latest_labels=self.infos[0]["labels"]) # self.prev_frame_info['labels'])
+            if label_dict_added_valid:
+                labels = {**info_latest_frame['labels'], **label_dict_added}
+            else:
+                labels = {}
+        # combine the additional labels (velocities) and the labels from the very LATEST frame
+        elif len(self.infos) == 1:
+            info_latest_frame = self.infos[0]
+            labels = {**info_latest_frame.get("labels"), **label_dict_added}
+            labels = {}
+            self.counter_just_1_info += 1
+            print(f"counter just 1 info is {self.counter_just_1_info}")
+        else:
+            sys.exit(1)
+        info = {"labels": labels}
+        for k, v in info_latest_frame.items():
+            if k not in info:
+                info.update({k: v})  # e.g. add ale_lives key + val
+
+        return info
+
+    def getVel(self, pos_old, pos_new, frame_diff):
+        # if(abs(int(pos_old) - int(pos_new)) > 30):
+        #     print(f"new {pos_new}; old {pos_old}")
+        valid_flag = True
+        vel = int((int(pos_new) - int(pos_old)) / frame_diff)
+        if abs(vel) > self.abs_threshold_invalid:
+            # INVALID (spawning!)
+            valid_flag = False
+        return vel, valid_flag
+
+    def getAdditionalLabelDict(self, latest_labels, second_latest_labels):
+        labels_added = defaultdict(int)
+        labels_added_valid = True  # default
+        for k, val in self.additional_labels_dict.items():
+            if type(val) is str:
+
+                velocity_value, valid_value = self.getVel(
+                    pos_old=second_latest_labels[val], pos_new=latest_labels[val], frame_diff=1)
+                if not valid_value:
+                    labels_added_valid = False
+                labels_added[k] = velocity_value
+        return labels_added, labels_added_valid
 
 class ScaledFloatFrame(gym.ObservationWrapper):
     def __init__(self, env):
@@ -301,6 +398,32 @@ class ScaledFloatFrame(gym.ObservationWrapper):
         # careful! This undoes the memory optimization, use
         # with smaller replay buffers only.
         return np.array(observation).astype(np.float32) / 255.0
+
+def wrap_deepmind_benchmark(env, dim=84):
+    """Configure environment for DeepMind-style Atari.
+
+    Note that we assume reward clipping is done outside the wrapper.
+
+    Args:
+        dim (int): Dimension to resize observations to (dim x dim).
+        framestack (bool): Whether to framestack observations.
+    """
+    env = MonitorEnv(env)
+    env = NoopResetEnv(env, noop_max=30)
+    if "NoFrameskip" in env.spec.id:
+        env = MaxAndSkipEnv(env, skip=4)
+    env = EpisodicLifeEnv(env)
+    if "FIRE" in env.unwrapped.get_action_meanings():
+        env = FireResetEnv(env)
+    env = WarpFrame(env, dim) # includes overlaying the scores of poing
+    # env = ClipRewardEnv(env)  # reward clipping is handled by policy eval
+    env = AtariARIWrapper(env)  # adds the "labels" to the info-dict
+    if "pong" in env.unwrapped.spec.id.lower():
+        env = RemoveScoresFromLabelsPong(env)
+    env = FrameStackDeriveVelocitiesNonOverlapping(env, 4)
+    # DO NOT DO for benchmarking!
+    # env = ScaledFloatFrame(env)  # TODO: use for dqn?
+    return env
 
 def wrap_deepmind(env, dim=84, framestack=True):
     """Configure environment for DeepMind-style Atari.
