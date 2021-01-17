@@ -296,7 +296,7 @@ class FrameStack(gym.Wrapper):
         assert len(self.frames) == self.k
         return np.concatenate(self.frames, axis=2)
 
-class FrameStackDeriveVelocitiesNonOverlapping(gym.Wrapper):
+class FrameStackDeriveVelocitiesOverlapping(gym.Wrapper):
     def __init__(self, env, k):
         """Stack k last frames."""
         gym.Wrapper.__init__(self, env)
@@ -380,7 +380,6 @@ class FrameStackDeriveVelocitiesNonOverlapping(gym.Wrapper):
         labels_added_valid = True  # default
         for k, val in self.additional_labels_dict.items():
             if type(val) is str:
-
                 velocity_value, valid_value = self.getVel(
                     pos_old=second_latest_labels[val], pos_new=latest_labels[val], frame_diff=1)
                 if not valid_value:
@@ -420,7 +419,7 @@ def wrap_deepmind_benchmark(env, dim=84):
     env = AtariARIWrapper(env)  # adds the "labels" to the info-dict
     if "pong" in env.unwrapped.spec.id.lower():
         env = RemoveScoresFromLabelsPong(env)
-    env = FrameStackDeriveVelocitiesNonOverlapping(env, 4)
+    env = FrameStackDeriveVelocitiesOverlapping(env, 4)
     # DO NOT DO for benchmarking!
     # env = ScaledFloatFrame(env)  # TODO: use for dqn?
     return env
