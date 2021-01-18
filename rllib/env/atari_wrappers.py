@@ -421,7 +421,7 @@ def wrap_deepmind_benchmark(env, dim=84):
         env = RemoveScoresFromLabelsPong(env)
     env = FrameStackDeriveVelocitiesOverlapping(env, 4)
     # DO NOT DO for benchmarking!
-    # env = ScaledFloatFrame(env)  # TODO: use for dqn?
+    env = ScaledFloatFrame(env)  # TODO: use for dqn?
     return env
 
 def wrap_deepmind(env, dim=84, framestack=True):
