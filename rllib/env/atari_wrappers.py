@@ -407,7 +407,7 @@ def wrap_deepmind_benchmark(env, dim=84):
         dim (int): Dimension to resize observations to (dim x dim).
         framestack (bool): Whether to framestack observations.
     """
-    env = MonitorEnv(env)
+    # env = MonitorEnv(env)
     env = NoopResetEnv(env, noop_max=30)
     if "NoFrameskip" in env.spec.id:
         env = MaxAndSkipEnv(env, skip=4)
