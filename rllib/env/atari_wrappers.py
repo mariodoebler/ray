@@ -470,7 +470,7 @@ def wrap_rectangular_deepmind(env, dim_height=210, dim_width=160, framestack=Fal
     env = ScaledFloatFrame(env)  # TODO: use for dqn?
     return env
     
-def wrap_ram(env, framestack=True, extract_ram=True, debug_trajectory=False, encode_as_bits=False, breakout_keep_blocks=False):
+def wrap_ram(env, framestack=True, extract_ram=True, debug_trajectory=False, encode_as_bits=False, breakout_keep_blocks=False, input_just_diff=False):
     # ORDER is important
     # FIRST extract rams, then (maybe) stack the observations
     # env = gym_wrappers.Monitor(
@@ -495,7 +495,8 @@ def wrap_ram(env, framestack=True, extract_ram=True, debug_trajectory=False, enc
         env = ScaledFloatFrame(env)  # TODO: use for dqn?
 
     if framestack:
-        env = FrameStackRAMFrameSkip(env, k=4, skip=4, debug_trajectory=debug_trajectory)
+        env = FrameStackRAMFrameSkip(env, k=4, skip=4, debug_trajectory=debug_trajectory, input_just_diff=input_just_diff)
+        framestack = False # set to false later as otherwise problems in bitencoding
     else: # no frameSTACKING but do SKIP
         env = FrameSkipRAM(env, skip=2)
     if encode_as_bits:
@@ -638,13 +639,14 @@ class FrameSkipRAM(gym.Wrapper):
         return self.last_obs, total_reward, done, info
 
 class FrameStackRAMFrameSkip(gym.Wrapper):
-    def __init__(self, env, k=4, skip=4, debug_trajectory=False):
+    def __init__(self, env, k=4, skip=4, debug_trajectory=False, input_just_diff=False):
         gym.Wrapper.__init__(self, env) # important otherwise action_space == None
 
         self.k = k
         self._skip = skip
         self.debug_trajectory_pong = debug_trajectory and "pong" in env.unwrapped.spec.id.lower()
         self.debug_trajectory_breakout = debug_trajectory and "breakout" in env.unwrapped.spec.id.lower()
+        self.input_just_diff = input_just_diff and self.debug_trajectory_breakout
 
         self.frames = deque([], maxlen=k)
         shp = env.observation_space.shape
@@ -774,7 +776,7 @@ class FrameStackRAMFrameSkip(gym.Wrapper):
                 # self.obs_traj[2] = self.frames[-1][4]
                 # self.obs_traj[3] = self.frames[-1][5]
                 # do not save plots on GPU (doesn't make sense with multiprocessing of envs/workers)
-                if not torch.cuda.is_available() and self.counter > 10 and self.counter < 310: #  and not torch.cuda.is_available:
+                if not torch.cuda.is_available() and self.counter < 400: #  and not torch.cuda.is_available:
                     obs_ram = self.frames[-1]
                     enemy_x = 20
                     player_x = 160-20
@@ -799,36 +801,63 @@ class FrameStackRAMFrameSkip(gym.Wrapper):
             player_x = self.frames[-1][0]
             if reset:
                 # weird workaround, if np-array is created here --> often problems with shape (2,1) instead of (2,)...
-                self.obs_traj[0] = player_x
-                self.obs_traj[1] = player_x
+                if self.input_just_diff:
+                    self.obs_traj[0] = player_x
+                else:
+                    self.obs_traj[0] = player_x
+                    self.obs_traj[1] = player_x
             else:
                 endpoint, ball_v_x, ball_v_y = self._getTrajectoryEndPointBreakout(self.frames)
-                self.obs_traj[0] = self._getBoundedValueBreakout(endpoint)
-                self.obs_traj[1] = player_x # self._getBoundedValue(player_y)
+                if self.input_just_diff:
+                    diff = self.getDifference(endpoint=endpoint, player_position=player_x)
+                    self.obs_traj[0] = abs(diff)
+                    if diff > 0:
+                        self.obs_traj[1] = 1
+                    else:
+                        self.obs_traj[1] = 0
+                else:
+                    self.obs_traj[0] = self._getBoundedValueBreakout(endpoint)
+                    self.obs_traj[1] = player_x # self._getBoundedValue(player_y)
                 # do not save plots on GPU (doesn't make sense with multiprocessing of envs/workers)
-                if not torch.cuda.is_available() and self.counter > 10 and self.counter < 310: #  and not torch.cuda.is_available:
+                if not torch.cuda.is_available()  and self.counter < 500: #  and not torch.cuda.is_available:
                     obs_ram = self.frames[-1]
                     player_y = 209-20
                     im = self.env.render('rgb_array')
                     # center: tuple(COL, ROW) --> here: (x, y)
                     # ball
                     cv2.circle(im, (int(obs_ram[1]*255), int(255*obs_ram[2])), 6, color=(255, 255, 0), thickness=1)
-                    # player
-                    cv2.circle(im, (int(255*obs_ram[0]), player_y), 3, color=(255, 255, 0), thickness=-1)
                     # endpoint
-                    cv2.circle(im, (int(255*self.obs_traj[0]), player_y), 5, color=(255, 0, 0), thickness=3)
-                    print(f"endoint: ({255*self.obs_traj[0]}, {player_y}); unbounded: {255*endpoint}")
+                    if self.input_just_diff:
+                        # TODO: create line from endpoint to player
+                        # cv2.circle(im, (int(255*self.obs_traj[0]), player_y), 5, color=(255, 0, 0), thickness=3)
+                        if self.obs_traj[1] > 0.99:
+                            val_add = self.obs_traj[0]
+                        elif np.isclose(self.obs_traj[1], 0):
+                            if self.obs_traj[0] > 0:
+                                val_add = -self.obs_traj[0]
+                            else:
+                                val_add = 0
+                        second_point = (255*(self.frames[-1][0] + val_add), player_y)
+                        cv2.line(im, (int(255*self.frames[-1][0]), player_y), second_point, color=(0, 255, 0), thickness=2)
+                    else:
+                        cv2.circle(im, (int(255*self.obs_traj[0]), player_y), 5, color=(255, 0, 0), thickness=3)
+                        print(f"endoint: ({255*self.obs_traj[0]}, {player_y}); unbounded: {255*endpoint}")
+                        # player
+                        cv2.circle(im, (int(255*obs_ram[0]), player_y), 3, color=(255, 255, 0), thickness=-1)
                     # im = cv2.cvtColor(im, cv2.COLOR_RGB2GRAY)
                     im = Image.fromarray(im)
                     path = f"{self.dump_path}{self.counter}_{int(255*self.obs_traj[0])}_{int(255*self.obs_traj[1])}_v_{ball_v_x*255}_{ball_v_y*255}_posball_{255*obs_ram[1]}_{255*obs_ram[2]}.png"
                     im.save(path)
                 self.counter += 1
-            assert self.obs_traj.shape==(2,)
+            # assert self.obs_traj.shape==(2,)
 
             return self.obs_traj
 
         else:
             return np.concatenate(self.frames, axis=1)
 
+    def getDifference(self, endpoint, player_position):
+        # TODO: how to scale??
+        return endpoint - player_position
 
 
