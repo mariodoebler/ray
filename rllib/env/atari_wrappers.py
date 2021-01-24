@@ -297,7 +297,7 @@ class FrameStack(gym.Wrapper):
         return np.concatenate(self.frames, axis=2)
 
 class FrameStackDeriveVelocitiesOverlapping(gym.Wrapper):
-    def __init__(self, env, k):
+    def __init__(self, env, k, apply_thresholds_to_velocities=False):
         """Stack k last frames."""
         gym.Wrapper.__init__(self, env)
         self.k = k
@@ -315,7 +315,7 @@ class FrameStackDeriveVelocitiesOverlapping(gym.Wrapper):
         self.additional_labels_dict = atari_dict_extended[self.game_name.lower(
         )]
         self.abs_threshold_invalid = threshold_velocities_per_game[self.game_name]
-
+        self.apply_thresholds = apply_thresholds_to_velocities
 
         self.counter_just_1_info = 0
 
@@ -370,7 +370,7 @@ class FrameStackDeriveVelocitiesOverlapping(gym.Wrapper):
         #     print(f"new {pos_new}; old {pos_old}")
         valid_flag = True
         vel = int((int(pos_new) - int(pos_old)) / frame_diff)
-        if abs(vel) > self.abs_threshold_invalid:
+        if self.apply_thresholds and (abs(vel) > self.abs_threshold_invalid):
             # INVALID (spawning!)
             valid_flag = False
         return vel, valid_flag
