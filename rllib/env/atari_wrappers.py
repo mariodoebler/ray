@@ -663,12 +663,20 @@ class FrameStackRAMFrameSkip(gym.Wrapper):
             self.obs_traj = np.zeros(self.observation_space.shape, dtype=np.float32)
             self.dump_path = os.path.join(Path.home(), "MA/datadump/ram/pong_traj/")
         elif self.debug_trajectory_breakout:
-            self.observation_space = spaces.Box(
-                low=env.observation_space.low[0],  # scalar value needed! low respectively high is an array of dim shape...
-                high=env.observation_space.high[0],
-                shape=(2,),
-                dtype=np.float32
-            )
+            if self.input_just_diff:
+                self.observation_space = spaces.Box(
+                    low=env.observation_space.low[0],  # scalar value needed! low respectively high is an array of dim shape...
+                    high=255,
+                    shape=(2,),
+                    dtype=np.uint8
+                )
+            else:
+                self.observation_space = spaces.Box(
+                    low=env.observation_space.low[0],  # scalar value needed! low respectively high is an array of dim shape...
+                    high=env.observation_space.high[0],
+                    shape=(2,),
+                    dtype=np.float32
+                )
             self.upper_bound = (209-93)/255.
             self.side_bound = 8 / 255.
             self.obs_traj = np.zeros(self.observation_space.shape, dtype=np.float32)
@@ -682,6 +690,7 @@ class FrameStackRAMFrameSkip(gym.Wrapper):
             )
         self.counter = 0
         self.last_endpoint = None
+        self.max_endpoint = 0
 
     def _getTrajectoryEndPointPong(self, obs_ram):
         ball_x = obs_ram[-1][0]
@@ -754,10 +763,12 @@ class FrameStackRAMFrameSkip(gym.Wrapper):
 
     def _getBoundedValueBreakout(self, value):
         value_unprocessed = value
+        self.max_endpoint = max(self.max_endpoint, value)
+        print(f"max endpoint is: {self.max_endpoint}")
         if value < self.side_bound:
             value = self.side_bound - (value - self.side_bound)
-        if value > (159-self.side_bound):
-            value = 2*(159-self.side_bound) - value
+        if value > ((159/255)-self.side_bound):
+            value = 2*((159/255)-self.side_bound) - value
         clipped_val = np.clip(value, 0, 159/255.) # x-value --> range[0, 159]
         return clipped_val
 
@@ -810,7 +821,7 @@ class FrameStackRAMFrameSkip(gym.Wrapper):
                 endpoint, ball_v_x, ball_v_y = self._getTrajectoryEndPointBreakout(self.frames)
                 if self.input_just_diff:
                     diff = self.getDifference(endpoint=endpoint, player_position=player_x)
-                    self.obs_traj[0] = abs(diff)
+                    self.obs_traj[0] = int(abs(diff*255))
                     if diff > 0:
                         self.obs_traj[1] = 1
                     else:
@@ -841,7 +852,9 @@ class FrameStackRAMFrameSkip(gym.Wrapper):
                         cv2.line(im, (int(255*self.frames[-1][0]), player_y), second_point, color=(0, 255, 0), thickness=2)
                     else:
                         cv2.circle(im, (int(255*self.obs_traj[0]), player_y), 5, color=(255, 0, 0), thickness=3)
-                        print(f"endoint: ({255*self.obs_traj[0]}, {player_y}); unbounded: {255*endpoint}")
+
+                        # print(f"endoint: ({255*self.obs_traj[0]}, {player_y}); unbounded: {255*endpoint}")
+
                         # player
                         cv2.circle(im, (int(255*obs_ram[0]), player_y), 3, color=(255, 255, 0), thickness=-1)
                     # im = cv2.cvtColor(im, cv2.COLOR_RGB2GRAY)
