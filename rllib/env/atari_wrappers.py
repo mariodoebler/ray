@@ -152,6 +152,28 @@ class FireResetEnv(gym.Wrapper):
     def step(self, ac):
         return self.env.step(ac)
 
+class FireResetNoopEnv(gym.Wrapper):
+    def __init__(self, env):
+        """Take action on reset.
+
+        For environments that are fixed until firing."""
+        gym.Wrapper.__init__(self, env)
+        assert env.unwrapped.get_action_meanings()[1] == "FIRE"
+        assert env.unwrapped.get_action_meanings()[0] == "NOOP"
+        assert len(env.unwrapped.get_action_meanings()) >= 3
+
+    def reset(self, **kwargs):
+        self.env.reset(**kwargs)
+        obs, _, done, _ = self.env.step(1)
+        if done:
+            self.env.reset(**kwargs)
+        obs, _, done, _ = self.env.step(0)
+        if done:
+            self.env.reset(**kwargs)
+        return obs
+
+    def step(self, ac):
+        return self.env.step(ac)
 
 class EpisodicLifeEnv(gym.Wrapper):
     def __init__(self, env):
@@ -637,6 +659,131 @@ class FrameSkipRAM(gym.Wrapper):
         # self.frames.append(last_obs)
         # self.frames.append(np.expand_dims(ob, axis=1))
         return self.last_obs, total_reward, done, info
+
+class TrajectoryBreakoutWithoutFrameStacking(gym.Wrapper):
+    def __init__(self, env):
+        gym.Wrapper.__init__(self, env) # important otherwise action_space == None
+
+        self.previous_frame = None
+
+        shp = env.observation_space.shape
+        assert len(shp) == 1, "Observation-Space of an environment based on the RAM-State should just be 1 before applying framestacking!"
+        self.observation_space = spaces.Box(
+            low=env.observation_space.low[0],  # scalar value needed! low respectively high is an array of dim shape...
+            high=255,
+            shape=(2,),
+            dtype=np.uint8
+        )
+        self.upper_bound = (209-93)
+        self.side_bound = 8
+        self.obs_traj = np.zeros(self.observation_space.shape, dtype=np.uint8)
+        self.dump_path = os.path.join(Path.home(), "MA/datadump/ram/breakout_traj/")
+        self.counter = 0
+        self.last_endpoint = None
+        self.position_player_y = 210-22
+        self.max_endpoint = 0
+
+    def reset(self, **kwargs):
+        return self.env.reset(**kwargs)
+        # ob = self.env.reset()
+        # for _ in range(self.k):
+        #     self.frames.append(np.expand_dims(ob, axis=1))
+        # return self._get_ob(reset=True)
+
+    def step(self, action):
+        # for i in range(self._skip):
+        ob, reward, done, info = self.env.step(action)
+        # if done:
+        #     break
+        return self._get_ob(ob), reward, done, info
+
+    def _getBoundedValueBreakout(self, value):
+        value_unprocessed = value
+        self.max_endpoint = max(self.max_endpoint, value)
+        print(f"max endpoint is: {self.max_endpoint}")
+        if value < self.side_bound:
+            value = self.side_bound - (value - self.side_bound)
+        if value > (159-self.side_bound):
+            value = 2*(159-self.side_bound) - value
+        clipped_val = np.clip(value, 0, 159) # x-value --> range[0, 159]
+        return clipped_val
+
+    def _getTrajectoryEndPointBreakout(self, obs_ram):
+        ball_x = obs_ram[1]
+        ball_y = obs_ram[2]
+
+        ball_v_x = ball_x - self.previous_frame[1]
+        ball_v_y = ball_y - self.previous_frame[2]
+
+        if (np.isclose(ball_v_x, 0)) or np.isclose(ball_v_y, 0) or (abs(ball_v_x) > 20) or abs(ball_v_y) > 20:
+            if self.last_endpoint:
+                endpoint = self.last_endpoint
+            else:
+                endpoint = ball_x
+        else:
+            v_quotient_x_y = ball_v_x / ball_v_y
+
+            endpoint = v_quotient_x_y * (self.position_player_y - ball_y) + ball_x
+            self.last_endpoint = endpoint
+
+        return endpoint, ball_v_x, ball_v_y
+
+    def _get_ob(self, obs_ram):
+        obs_ram = 255*obs_ram
+        player_x = obs_ram[0]
+        # if reset:
+        #     # weird workaround, if np-array is created here --> often problems with shape (2,1) instead of (2,)...
+        #     if self.input_just_diff:
+        #         self.obs_traj[0] = player_x
+        #     else:
+        #         self.obs_traj[0] = player_x
+        #         self.obs_traj[1] = player_x
+        # else:
+        if self.previous_frame is not None:
+            endpoint, ball_v_x, ball_v_y = self._getTrajectoryEndPointBreakout(obs_ram)
+        else:
+            endpoint = player_x  # a value has to be assigned...
+            ball_v_x, ball_v_y = 0, 0
+        # if self.input_just_diff:
+        #     diff = self.getDifference(endpoint=endpoint, player_position=player_x)
+        #     self.obs_traj[0] = int(abs(diff*255))
+        #     if diff > 0:
+        #         self.obs_traj[1] = 1
+        #     else:
+        #         self.obs_traj[1] = 0
+        # else:
+        self.obs_traj[0] = self._getBoundedValueBreakout(endpoint)
+        self.obs_traj[1] = player_x # self._getBoundedValue(player_y)
+        # do not save plots on GPU (doesn't make sense with multiprocessing of envs/workers)
+        # if not torch.cuda.is_available()  and self.counter < 500: #  and not torch.cuda.is_available:
+        #     # obs_ram = self.frames[-1]
+        #     player_y = 209-20
+        #     im = self.env.render('rgb_array')
+        #     # center: tuple(COL, ROW) --> here: (x, y)
+        #     # ball
+        #     cv2.circle(im, (int(obs_ram[1]*255), int(255*obs_ram[2])), 6, color=(255, 255, 0), thickness=1)
+        #     # endpoint
+        #     cv2.circle(im, (int(255*self.obs_traj[0]), player_y), 5, color=(255, 0, 0), thickness=3)
+        #
+        #     # print(f"endoint: ({255*self.obs_traj[0]}, {player_y}); unbounded: {255*endpoint}")
+        #
+        #     # player
+        #     cv2.circle(im, (int(255*obs_ram[0]), player_y), 3, color=(255, 255, 0), thickness=-1)
+        #     # im = cv2.cvtColor(im, cv2.COLOR_RGB2GRAY)
+        #     im = Image.fromarray(im)
+        #     path = f"{self.dump_path}{self.counter}_{int(255*self.obs_traj[0])}_{int(255*self.obs_traj[1])}_v_{ball_v_x*255}_{ball_v_y*255}_posball_{255*obs_ram[1]}_{255*obs_ram[2]}.png"
+        #     im.save(path)
+        #     self.counter += 1
+            # assert self.obs_traj.shape==(2,)
+
+        self.previous_frame = obs_ram
+        return self.obs_traj
+
+
+    def getDifference(self, endpoint, player_position):
+        # TODO: how to scale??
+        return endpoint - player_position
+
 
 class FrameStackRAMFrameSkip(gym.Wrapper):
     def __init__(self, env, k=4, skip=4, debug_trajectory=False, input_just_diff=False):
