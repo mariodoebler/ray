@@ -502,8 +502,8 @@ def wrap_ram(env, framestack=True, extract_ram=True, debug_trajectory=False, enc
     #     force=True)
     env = MonitorEnv(env)
     env = NoopResetEnv(env, noop_max=30)
-    # if "NoFrameskip" in env.spec.id:
-        # env = MaxAndSkipEnv(env, skip=4)
+    # if "NoFrameskip" in env.spec.id:  # for RAM: frameSKIPPING is done by special RAMskipping wrapper further down
+    #     env = MaxAndSkipEnv(env, skip=4)
     env = EpisodicLifeEnv(env)
     if "FIRE" in env.unwrapped.get_action_meanings():
         env = FireResetEnv(env)
@@ -516,11 +516,15 @@ def wrap_ram(env, framestack=True, extract_ram=True, debug_trajectory=False, enc
     else:
         env = ScaledFloatFrame(env)  # TODO: use for dqn?
 
-    if framestack:
-        env = FrameStackRAMFrameSkip(env, k=4, skip=4, debug_trajectory=debug_trajectory, input_just_diff=input_just_diff)
-        framestack = False # set to false later as otherwise problems in bitencoding
+    if framestack and not input_just_diff:
+        env = FrameStackRAMFrameSkip(env, k=4, skip=4, debug_trajectory=debug_trajectory)#, input_just_diff=input_just_diff)
+        # framestack = False # set to false later as otherwise problems in bitencoding
     else: # no frameSTACKING but do SKIP
-        env = FrameSkipRAM(env, skip=2)
+        env = FrameSkipRAM(env, skip=4)
+
+    if input_just_diff:
+        env = TrajectoryBreakoutWithoutFrameStacking(env)
+        env = DistanceToEndpoint(env)
     if encode_as_bits:
         env = BitEncodingWrapper(env, framestack)
 
@@ -660,13 +664,47 @@ class FrameSkipRAM(gym.Wrapper):
         # self.frames.append(np.expand_dims(ob, axis=1))
         return self.last_obs, total_reward, done, info
 
+
+class DistanceToEndpoint(gym.ObservationWrapper):
+    def __init__(self, env):
+        gym.ObservationWrapper.__init__(self, env)
+        self.observation_space = spaces.Box(
+            low=env.observation_space.low[0],  # scalar value needed! low respectively high is an array of dim shape...
+            high=1,
+            shape=(2,),
+            dtype=np.float64
+        )
+
+    def _getDifference(self, endpoint, player_position):
+        # TODO: how to scale??
+        return endpoint.astype('int16') - player_position.astype('int16')
+
+    def observation(self, obs_traj):
+        distance_float = self._getDifference(obs_traj[0], obs_traj[1]) / 255.
+        if obs_traj[0] == obs_traj[1]:
+            distance_direction = 0.5
+        elif distance_float > 0:
+            distance_direction = 1
+        else:
+            distance_direction = 0
+
+        return np.array([abs(distance_float), distance_direction])
+
+        # frame = cv2.cvtColor(frame, cv2.COLOR_RGB2GRAY)
+        # frame = cv2.resize(
+        #     frame, (self.width, self.height), interpolation=cv2.INTER_AREA)
+        # return frame[:, :, None]
+
+
+
+
 class TrajectoryBreakoutWithoutFrameStacking(gym.Wrapper):
     def __init__(self, env):
         gym.Wrapper.__init__(self, env) # important otherwise action_space == None
 
         self.previous_frame = None
-
-        shp = env.observation_space.shape
+        self.env = env
+        shp = self.env.observation_space.shape
         assert len(shp) == 1, "Observation-Space of an environment based on the RAM-State should just be 1 before applying framestacking!"
         self.observation_space = spaces.Box(
             low=env.observation_space.low[0],  # scalar value needed! low respectively high is an array of dim shape...
@@ -684,11 +722,11 @@ class TrajectoryBreakoutWithoutFrameStacking(gym.Wrapper):
         self.max_endpoint = 0
 
     def reset(self, **kwargs):
-        return self.env.reset(**kwargs)
-        # ob = self.env.reset()
+        # return self.env.reset(**kwargs)
+        ob = self.env.reset()
         # for _ in range(self.k):
         #     self.frames.append(np.expand_dims(ob, axis=1))
-        # return self._get_ob(reset=True)
+        return np.array(255*[ob[0], 255*ob[0]])
 
     def step(self, action):
         # for i in range(self._skip):
