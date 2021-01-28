@@ -700,7 +700,7 @@ class TrajectoryBreakoutWithoutFrameStacking(gym.Wrapper):
     def _getBoundedValueBreakout(self, value):
         value_unprocessed = value
         self.max_endpoint = max(self.max_endpoint, value)
-        print(f"max endpoint is: {self.max_endpoint}")
+        # print(f"max endpoint is: {self.max_endpoint}")
         if value < self.side_bound:
             value = self.side_bound - (value - self.side_bound)
         if value > (159-self.side_bound):
