@@ -249,6 +249,7 @@ class WarpRectangularFrame(gym.ObservationWrapper):
         gym.ObservationWrapper.__init__(self, env)
         self.height = dim_height
         self.width = dim_width
+        self.overlay_scores_pong = "pong" in env.spec.id.lower()
         self.observation_space = spaces.Box(
             low=0,
             high=255,
@@ -257,6 +258,8 @@ class WarpRectangularFrame(gym.ObservationWrapper):
 
     def observation(self, frame):
         frame = cv2.cvtColor(frame, cv2.COLOR_RGB2GRAY)
+        if self.overlay_scores_pong:
+            frame[:30, :] = 236 # overlay the upper 30px of Pong
         frame = cv2.resize(
             frame, (self.width, self.height), interpolation=cv2.INTER_AREA)
         return frame[:, :, None]
