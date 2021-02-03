@@ -439,7 +439,8 @@ def wrap_deepmind_benchmark(env, dim=84):
     env = EpisodicLifeEnv(env)
     if "FIRE" in env.unwrapped.get_action_meanings():
         env = FireResetEnv(env)
-    env = WarpFrame(env, dim) # includes overlaying the scores of poing
+    # benchmarking HAS TO BE done on 210x160, otherweise RAM-labels not exact
+    env = WarpRectangularFrame(env, dim_height=210, dim_width=160) # includes overlaying the scores of poing
     # env = ClipRewardEnv(env)  # reward clipping is handled by policy eval
     env = AtariARIWrapper(env)  # adds the "labels" to the info-dict
     if "pong" in env.unwrapped.spec.id.lower():
