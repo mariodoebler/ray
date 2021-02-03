@@ -357,14 +357,14 @@ class RolloutWorker(ParallelIteratorWorker):
                 clip_rewards = True
 
             def wrap(env):
-                if "dim_height" and "dim_width" in model_config["custom_model_config"]:
-                    dim_height = model_config["custom_model_config"]["dim_height"]
-                    dim_width = model_config["custom_model_config"]["dim_width"]
+                if ("dim_height" and "dim_width" in model_config["custom_model_config"]) or ("dim_height" and "dim_width" in model_config):
+                    dim_height = model_config.get("custom_model_config", {}).get("dim_height") or model_config.get("dim_height", None)
+                    dim_width = model_config.get("custom_model_config", {}).get("dim_width") or model_config.get("dim_width", None)
                     env = wrap_rectangular_deepmind(
                         env,
                         dim_height = dim_height,
                         dim_width = dim_width,
-                        framestack=model_config.get("framestack")
+                        framestack=model_config.get("framestack", 4)
                     )
                 else:
                     env = wrap_deepmind(
