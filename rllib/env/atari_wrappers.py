@@ -588,6 +588,22 @@ class ExtractRAMLocations(gym.ObservationWrapper):
             #     "player_y": 5
             # }
             self.dump_path = os.path.join(Path.home(), "MA/datadump/ram/pong_traj/")
+        
+        if "pacman" in self.game_name:
+            dict_game.pop("ghosts_count", None)
+            dict_game.pop("player_direction", None)
+            dict_game.pop("player_score", None)
+            dict_game.pop("num_lives", None)
+            dict_game.pop("dots_eaten_count", None)
+            dict_game.pop("fruit_x", None)
+            dict_game.pop("fruit_y", None)
+
+        if "spaceinvaders" in self.game_name:
+            dict_game.pop("player_score", None)
+            dict_game.pop("invaders_left_count", None)
+            dict_game.pop("num_lives", None)
+
+
         if "breakout" in self.game_name:
             dict_game.pop("score", None)
             dict_game.pop("blocks_hit_count", None)
