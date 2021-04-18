@@ -643,6 +643,20 @@ class ExtractRAMLocations(gym.ObservationWrapper):
                 block_bit_list = [obs[self.ram_variables_dict[f"block_bit_map_{i}"]]   for i in range(30)]
                 obs_ram = np.append(obs_ram, np.asarray(block_bit_list))
 
+        elif "space" in self.game_name:
+            obs_ram = np.array([obs[self.ram_variables_dict['player_x']], obs[self.ram_variables_dict['missiles_y']], obs[self.ram_variables_dict['enemy_x']], obs[self.ram_variables_dict['enemy_y']]], dtype='float64')
+
+        elif "pacman" in self.game_name:
+            obs_ram = np.array([obs[self.ram_variables_dict['player_x']] - self.offsets['player_x'], obs[self.ram_variables_dict['player_y']] - self.offsets['player_y'], 
+                                obs[self.ram_variables_dict['enemy_sue_x']] - self.offsets['enemy_sue_x'] , 
+                                obs[self.ram_variables_dict['enemy_sue_y']] - self.offsets['enemy_sue_y'], 
+                                obs[self.ram_variables_dict['enemy_blinky_x']] - self.offsets['enemy_blinky_x'], 
+                                obs[self.ram_variables_dict['enemy_blinky_y']] - self.offsets['enemy_blinky_y'], 
+                                obs[self.ram_variables_dict['enemy_pinky_x']] - self.offsets['enemy_pinky_x'], 
+                                obs[self.ram_variables_dict['enemy_pinky_y']] - self.offsets['enemy_pinky_y'], 
+                                obs[self.ram_variables_dict['enemy_inky_x']] - self.offsets['enemy_inky_x'], 
+                                obs[self.ram_variables_dict['enemy_inky_y']] - self.offsets['enemy_inky_y']], dtype='float64')
+
         # print(f"score e {obs_ram[4]} score p {obs_ram[5]}")
         # print(f"{obs_ram[0]} {obs_ram[1]} {obs_ram[2]} {obs_ram[3]}")
         return obs_ram / 255.0
