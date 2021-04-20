@@ -1,3 +1,4 @@
+import copy
 import numpy as np
 from collections import deque
 import gym
@@ -603,6 +604,12 @@ class ExtractRAMLocations(gym.ObservationWrapper):
             dict_game.pop("invaders_left_count", None)
             dict_game.pop("num_lives", None)
 
+        if "battlezone" in self.game_name:
+            keep_list = ["blue_tank_x", "blue_tank2_x", "left_tread_position", "right_tread_position"]
+            dict_game_copy = copy.deepcopy(dict_game)
+            for k in dict_game_copy.keys():
+                if k not in keep_list:
+                    dict_game.pop(k, None)
 
         if "breakout" in self.game_name:
             dict_game.pop("score", None)
