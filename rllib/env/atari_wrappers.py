@@ -642,6 +642,11 @@ class ExtractRAMLocations(gym.ObservationWrapper):
             if self.breakout_keep_blocks:
                 block_bit_list = [obs[self.ram_variables_dict[f"block_bit_map_{i}"]]   for i in range(30)]
                 obs_ram = np.append(obs_ram, np.asarray(block_bit_list))
+        elif "battlezone" in self.game_name:
+            obs_ram = np.array([obs[self.ram_variables_dict["blue_tank_x"]],
+                                obs[self.ram_variables_dict["blue_tank2_x"]],
+                                obs[self.ram_variables_dict["left_tread_position"]],
+                                obs[self.ram_variables_dict["right_tread_position"]]], dtype='float64')
 
         elif "space" in self.game_name:
             obs_ram = np.array([obs[self.ram_variables_dict['player_x']], obs[self.ram_variables_dict['missiles_y']], obs[self.ram_variables_dict['enemy_x']], obs[self.ram_variables_dict['enemy_y']]], dtype='float64')
