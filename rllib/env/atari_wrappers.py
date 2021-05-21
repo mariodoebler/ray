@@ -26,8 +26,8 @@ from PIL import Image
 from benchmarking.utils.process_velocities import threshold_velocities_per_game
 from benchmarking.utils.atari_dict_extended import atari_dict_extended
 
-from test_atariari.wrapper.atari_wrapper import RemoveScoresFromLabelsPong
-from test_atariari.utils.atari_offset_dict import getOffsetDict
+from reinforcement_learning.wrapper.atari_wrapper import RemoveScoresFromLabelsPong
+from reinforcement_learning.utils.atari_offset_dict import getOffsetDict
 
 
 def is_atari(env):
