@@ -1,48 +1,53 @@
-import random
-import numpy as np
-import gym
-import logging
-import pickle
-import platform
 import os
-from typing import Callable, Any, List, Dict, Tuple, Union, Optional, \
-    TYPE_CHECKING, Type, TypeVar
+import pickle
+import random
+import logging
+import platform
 
+from typing import (Any, Callable, Dict, List, Optional, Tuple, Type,
+                    TYPE_CHECKING, TypeVar, Union)
+
+import gym
 import ray
-from ray.rllib.env.atari_wrappers import wrap_deepmind, wrap_rectangular_deepmind, is_atari, wrap_ram, wrap_deepmind_benchmark
+import numpy as np
+
+from ray.util.iter import ParallelIteratorWorker
+from ray.util.debug import (disable_log_once_globally, enable_periodic_logging,
+                            log_once)
+from ray.rllib.utils import merge_dicts
+from ray.rllib.utils.sgd import do_minibatch_sgd
+from ray.rllib.utils.debug import summarize
+from ray.rllib.utils.filter import Filter, get_filter
+from ray.rllib.utils.typing import (AgentID, EnvConfigDict, EnvType,
+                                    ModelConfigDict, ModelGradients,
+                                    ModelWeights, MultiAgentPolicyConfigDict,
+                                    PartialTrainerConfigDict, PolicyID,
+                                    SampleBatchType, TrainerConfigDict)
+from ray.rllib.utils.framework import try_import_tf, try_import_torch
+from ray.rllib.utils.annotations import DeveloperAPI
+from ray.rllib.utils.tf_run_builder import TFRunBuilder
+from ray.rllib.models import ModelCatalog
 from ray.rllib.env.base_env import BaseEnv
+from ray.rllib.env.vector_env import VectorEnv
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.env.external_env import ExternalEnv
-from ray.rllib.env.multi_agent_env import MultiAgentEnv
-from ray.rllib.env.external_multi_agent_env import ExternalMultiAgentEnv
-from ray.rllib.env.vector_env import VectorEnv
+from ray.rllib.env.atari_wrappers import (is_atari, wrap_deepmind,
+                                          wrap_deepmind_benchmark, wrap_ram,
+                                          wrap_rectangular_deepmind)
 from ray.rllib.evaluation.sampler import AsyncSampler, SyncSampler
-from ray.rllib.evaluation.rollout_metrics import RolloutMetrics
-from ray.rllib.models import ModelCatalog
+from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.models.preprocessors import NoPreprocessor, Preprocessor
-from ray.rllib.offline import NoopOutput, IOContext, OutputWriter, InputReader
-from ray.rllib.offline.off_policy_estimator import OffPolicyEstimator, \
-    OffPolicyEstimate
+from ray.rllib.evaluation.rollout_metrics import RolloutMetrics
+from ray.rllib.env.external_multi_agent_env import ExternalMultiAgentEnv
+from ray.rllib.offline import InputReader, IOContext, NoopOutput, OutputWriter
 from ray.rllib.offline.is_estimator import ImportanceSamplingEstimator
 from ray.rllib.offline.wis_estimator import WeightedImportanceSamplingEstimator
-from ray.rllib.policy.sample_batch import MultiAgentBatch, DEFAULT_POLICY_ID
+from ray.rllib.offline.off_policy_estimator import (OffPolicyEstimate,
+                                                    OffPolicyEstimator)
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.tf_policy import TFPolicy
+from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, MultiAgentBatch
 from ray.rllib.policy.torch_policy import TorchPolicy
-from ray.rllib.utils import merge_dicts
-from ray.rllib.utils.annotations import DeveloperAPI
-from ray.rllib.utils.debug import summarize
-from ray.rllib.utils.filter import get_filter, Filter
-from ray.rllib.utils.framework import try_import_tf, try_import_torch
-from ray.rllib.utils.sgd import do_minibatch_sgd
-from ray.rllib.utils.tf_run_builder import TFRunBuilder
-from ray.rllib.utils.typing import AgentID, EnvConfigDict, EnvType, \
-    ModelConfigDict, ModelGradients, ModelWeights, \
-    MultiAgentPolicyConfigDict, PartialTrainerConfigDict, PolicyID, \
-    SampleBatchType, TrainerConfigDict
-from ray.util.debug import log_once, disable_log_once_globally, \
-    enable_periodic_logging
-from ray.util.iter import ParallelIteratorWorker
 
 if TYPE_CHECKING:
     from ray.rllib.evaluation.observation_function import ObservationFunction
@@ -312,6 +317,7 @@ class RolloutWorker(ParallelIteratorWorker):
             self.callbacks: "DefaultCallbacks" = callbacks()
         else:
             from ray.rllib.agents.callbacks import DefaultCallbacks
+
             self.callbacks: "DefaultCallbacks" = DefaultCallbacks()
         self.worker_index: int = worker_index
         self.num_workers: int = num_workers
@@ -373,6 +379,7 @@ class RolloutWorker(ParallelIteratorWorker):
                         framestack=model_config.get("framestack"))
                 if monitor_path:
                     from gym import wrappers
+
                     env = wrappers.Monitor(env, monitor_path, resume=True)
                 return env
         elif self.env.unwrapped.spec is not None and "ram" in self.env.unwrapped.spec.id and model_config.get("custom_model_config", {}).get("extract_game_specific_ram_states", None):
@@ -395,6 +402,7 @@ class RolloutWorker(ParallelIteratorWorker):
             def wrap(env):
                 if monitor_path:
                     from gym import wrappers
+
                     env = wrappers.Monitor(env, monitor_path, resume=True)
                 return env
 
@@ -1073,6 +1081,7 @@ class RolloutWorker(ParallelIteratorWorker):
     def find_free_port(self) -> int:
         """Finds a free port on the current node."""
         from ray.util.sgd import utils
+
         return utils.find_free_port()
 
     def __del__(self):
