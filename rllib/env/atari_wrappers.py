@@ -1,3 +1,5 @@
+import os
+import sys
 import copy
 
 from collections import deque
@@ -10,21 +12,19 @@ from gym import spaces
 
 cv2.ocl.setUseOpenCL(False)
 
-import os
-
 from pathlib import Path
 from datetime import datetime
 from collections import defaultdict
-
-from atariari.benchmark.wrapper import AtariARIWrapper, InfoWrapper
-from atariari.benchmark.ram_annotations import atari_dict
 
 import torch
 
 from PIL import Image
 
-from benchmarking.utils.process_velocities import threshold_velocities_per_game
-from benchmarking.utils.atari_dict_extended import atari_dict_extended
+from atariari.benchmark.wrapper import AtariARIWrapper, InfoWrapper
+from atariari.benchmark.ram_annotations import atari_dict
+
+from benchmark.utils.process_velocities import threshold_velocities_per_game
+from benchmark.utils.atari_dict_extended import atari_dict_extended
 
 from reinforcement_learning.wrapper.atari_wrapper import RemoveScoresFromLabelsPong
 from reinforcement_learning.utils.atari_offset_dict import getOffsetDict
@@ -113,7 +113,7 @@ class NoopResetEnv(gym.Wrapper):
 
     def reset(self, **kwargs):
         """ Do no-op action for a number of             obs_ram = np.array([obs[self.ram_variables_dict["ball_x"]],
-                                obs[self.ram_variables_dict["enememy_y"]],
+        obs[self.ram_variables_dict["enememy_y"]],
                                 obs[self.ram_variables_dict["player_y"]],
                                 obs[self.ram_variables_dict["ball_y"]]], dtype='float64')
 steps in [1, noop_max]."""
@@ -128,7 +128,7 @@ steps in [1, noop_max]."""
             obs, _, done, _ = self.env.step(self.noop_action)
             if done:
                 obs = self.env.reset(**kwargs)
-        return obs
+            return obs
 
     def step(self, ac):
         return self.env.step(ac)
@@ -332,8 +332,8 @@ class FrameStack(gym.Wrapper):
         return np.concatenate(self.frames, axis=2)
 
 class FrameStackDeriveVelocitiesOverlapping(gym.Wrapper):
-        """Stack k last frames.
-        AND derive the velocities of movable objects based on the last two frames
+    """Stack k last frames.
+    AND derive the velocities of movable objects based on the last two frames
         of the stack and the respective info-ground-truth-labels. Consider the
         thresholds for reasonable velocities regarding the specific game."""
     def __init__(self, env, k, apply_thresholds_to_velocities=False):
@@ -350,8 +350,7 @@ class FrameStackDeriveVelocitiesOverlapping(gym.Wrapper):
 
         self.game_name = env.unwrapped.spec.id.split(
             "-")[0].split("No")[0].split("Deterministic")[0]
-        self.additional_labels_dict = atari_dict_extended[self.game_name.lower(
-        )]
+        self.additional_labels_dict = atari_dict_extended[self.game_name.lower()]
         self.abs_threshold_invalid = threshold_velocities_per_game[self.game_name]
         self.apply_thresholds = apply_thresholds_to_velocities
 
@@ -505,7 +504,7 @@ def wrap_rectangular_deepmind(env, dim_height=210, dim_width=160, framestack=Fal
         env = FrameStack(env, 4)
     env = ScaledFloatFrame(env)  # TODO: use for dqn?
     return env
-    
+
 def wrap_ram(env, framestack=True, extract_ram=True, debug_trajectory=False, encode_as_bits=False, breakout_keep_blocks=False, input_just_diff=False):
     """
     Wrapper for learning from RAM
@@ -560,7 +559,7 @@ class ExtractRAMLocations(gym.ObservationWrapper):
             dict_game.pop("enemy_score", None)
             dict_game.pop("player_score", None)
             self.dump_path = os.path.join(Path.home(), "MA/datadump/ram/pong_traj/")
-        
+
         if "pacman" in self.game_name:
             dict_game.pop("ghosts_count", None)
             dict_game.pop("player_direction", None)
@@ -605,10 +604,10 @@ class ExtractRAMLocations(gym.ObservationWrapper):
 
     def observation(self, obs):
         if "pong" in self.game_name:
-                obs_ram = np.array([np.clip(obs[self.ram_variables_dict["ball_x"]] - self.offsets["ball_x"], 0, 159),
-                                    np.clip(obs[self.ram_variables_dict["enemy_y"]] - self.offsets["enemy_y"], 0, 209),
-                                    np.clip(obs[self.ram_variables_dict["player_y"]] - self.offsets["player_y"], 0, 209),
-                                    np.clip(obs[self.ram_variables_dict["ball_y"]] - self.offsets["ball_y"], 0, 209)], dtype='float64')
+            obs_ram = np.array([np.clip(obs[self.ram_variables_dict["ball_x"]] - self.offsets["ball_x"], 0, 159),
+                                np.clip(obs[self.ram_variables_dict["enemy_y"]] - self.offsets["enemy_y"], 0, 209),
+                                np.clip(obs[self.ram_variables_dict["player_y"]] - self.offsets["player_y"], 0, 209),
+                                np.clip(obs[self.ram_variables_dict["ball_y"]] - self.offsets["ball_y"], 0, 209)], dtype='float64')
         elif "breakout" in self.game_name:
             obs_ram = np.array([np.clip(obs[self.ram_variables_dict["player_x"]] - self.offsets["player_x"], 0, 159),
                                 np.clip(obs[self.ram_variables_dict["ball_x"]] - self.offsets["ball_x"], 0, 159),
